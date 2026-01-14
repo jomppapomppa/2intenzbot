@@ -1,0 +1,22 @@
+{
+  "name": "jucabot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260114.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.59.1"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "discord-interactions": "^4.4.0"
+  }
+}

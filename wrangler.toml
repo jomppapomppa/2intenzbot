@@ -1,0 +1,18 @@
+name = "jucabot"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# DISCORD_APPLICATION_ID = ""
+# DISCORD_PUBLIC_KEY = ""
+# DISCORD_TOKEN = ""
+# DISCORD_GUILD_ID = ""
+# DISCORD_CHANNEL_ID = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jucabot_db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[triggers]
+crons = ["* * * * *", "0 21 * * 0"] # Every minute for tracking, Sunday 21:00 for results

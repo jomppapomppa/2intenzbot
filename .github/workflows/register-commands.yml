@@ -1,0 +1,17 @@
+name: Register Discord Commands
+
+on:
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Register Commands
+        run: |
+          node register.js "${{ secrets.DISCORD_TOKEN }}" "${{ secrets.DISCORD_APPLICATION_ID }}" "${{ secrets.DISCORD_GUILD_ID }}"
