@@ -15,4 +15,4 @@ database_name = "2intenzbot"
 database_id = "074a8322-9628-452a-b512-51205027873e"
 
 [triggers]
-crons = ["* * * * *", "0 21 * * 0"] # Every minute for tracking, Sunday 21:00 for results
+crons = ["* * * * *", "0 21 * * SUN"] # Every minute for tracking, Sunday 21:00 for results
