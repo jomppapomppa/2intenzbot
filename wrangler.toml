@@ -1,4 +1,4 @@
-name = "jucabot"
+name = "2intenzbot"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
@@ -11,8 +11,8 @@ compatibility_date = "2024-01-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "jucabot_db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_name = "2intenzbot"
+database_id = "074a8322-9628-452a-b512-51205027873e"
 
 [triggers]
 crons = ["* * * * *", "0 21 * * 0"] # Every minute for tracking, Sunday 21:00 for results
