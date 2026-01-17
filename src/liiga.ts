@@ -94,11 +94,11 @@ export async function updateLiigaScores(env: Env) {
         };
     }
 
-    const messageContent = formatDiscordMessage(gamesData);
+    const embedData = formatDiscordEmbed(gamesData);
 
     if (!state.messageId && shouldStartNotify) {
         // Send new message
-        const sentMessage = await sendDiscordMessage(env, messageContent);
+        const sentMessage = await sendDiscordMessage(env, embedData);
         if (sentMessage) {
             console.log(`[Liiga] Sent new message: ${sentMessage.id}`);
             state.messageId = sentMessage.id;
@@ -107,7 +107,7 @@ export async function updateLiigaScores(env: Env) {
         // Update existing message if content changed or score changed
         // For simplicity, we update if any game is active or if it's the first time
         console.log(`[Liiga] Updating existing message: ${state.messageId}`);
-        await updateDiscordMessage(env, state.messageId, messageContent);
+        await updateDiscordMessage(env, state.messageId, embedData);
     }
 
     // Update state
@@ -135,43 +135,57 @@ async function fetchLiigaGames(date: string): Promise<LiigaGame[]> {
     }
 }
 
-function formatDiscordMessage(games: LiigaGame[]): string {
-    return games.map(game => {
+function formatDiscordEmbed(games: LiigaGame[]): any {
+    const fields = games.map(game => {
         const home = game.homeTeam.teamName;
         const away = game.awayTeam.teamName;
         const homeScore = game.homeTeam.goals;
         const awayScore = game.awayTeam.goals;
 
+        let name = `${home} - ${away}`;
+        let value = '';
+
         if (!game.started) {
             const startTime = new Date(game.start).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Helsinki' });
-            return `${home} ${startTime} ${away}`;
+            value = `klo ${startTime}`;
+        } else {
+            const timePlayed = formatGameTime(game.gameTime);
+            const ongoingStar = !game.ended ? '*' : '';
+            name = `${home} ${homeScore} - ${awayScore} ${away} (${timePlayed}${ongoingStar})`;
+
+            const lastGoal = getLastGoal(game);
+            if (lastGoal) {
+                const lastHomeScore = lastGoal.homeTeamScore;
+                const lastAwayScore = lastGoal.awayTeamScore;
+
+                const isHomeGoal = game.homeTeam.goalEvents.some(e => e.gameTime === lastGoal.gameTime && e.scorerPlayer?.lastName === lastGoal.scorerPlayer?.lastName);
+
+                const homeScoreStr = isHomeGoal ? `**${lastHomeScore}**` : `${lastHomeScore}`;
+                const awayScoreStr = !isHomeGoal ? `**${lastAwayScore}**` : `${lastAwayScore}`;
+
+                const scorerName = lastGoal.scorerPlayer ?
+                    `${lastGoal.scorerPlayer.firstName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.firstName.slice(1).toLowerCase()} ${lastGoal.scorerPlayer.lastName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.lastName.slice(1).toLowerCase()}`
+                    : 'Tuntematon';
+
+                const goalType = lastGoal.goalTypes.length > 0 ? ` (${lastGoal.goalTypes.join(', ')})` : '';
+                const goalTime = formatGameTime(lastGoal.gameTime);
+                value += `${homeScoreStr} - ${awayScoreStr} ${goalTime} ${scorerName}${goalType}`;
+            }
         }
 
-        const timePlayed = formatGameTime(game.gameTime);
-        const ongoingStar = !game.ended ? '*' : '';
-        let line = `${home} ${homeScore} - ${awayScore} ${away} (${timePlayed}${ongoingStar})`;
+        return {
+            name,
+            value,
+            inline: false
+        };
+    });
 
-        const lastGoal = getLastGoal(game);
-        if (lastGoal) {
-            const lastHomeScore = lastGoal.homeTeamScore;
-            const lastAwayScore = lastGoal.awayTeamScore;
-
-            const isHomeGoal = game.homeTeam.goalEvents.some(e => e.gameTime === lastGoal.gameTime && e.scorerPlayer?.lastName === lastGoal.scorerPlayer?.lastName);
-
-            const homeScoreStr = isHomeGoal ? `**${lastHomeScore}**` : `${lastHomeScore}`;
-            const awayScoreStr = !isHomeGoal ? `**${lastAwayScore}**` : `${lastAwayScore}`;
-
-            const scorerName = lastGoal.scorerPlayer ?
-                `${lastGoal.scorerPlayer.firstName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.firstName.slice(1).toLowerCase()} ${lastGoal.scorerPlayer.lastName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.lastName.slice(1).toLowerCase()}`
-                : 'Tuntematon';
-
-            const goalType = lastGoal.goalTypes.length > 0 ? ` (${lastGoal.goalTypes.join(', ')})` : '';
-            const goalTime = formatGameTime(lastGoal.gameTime);
-            line += `\n- ${homeScoreStr} - ${awayScoreStr} ${goalTime} ${scorerName}${goalType}`;
-        }
-
-        return line;
-    }).join('\n');
+    return {
+        title: "Liiga",
+        color: 0x0099ff,
+        fields: fields,
+        timestamp: new Date().toISOString()
+    };
 }
 
 function formatGameTime(seconds: number): string {
@@ -187,7 +201,7 @@ function getLastGoal(game: LiigaGame): LiigaGoalEvent | null {
     return allGoals.length > 0 ? allGoals[0] : null;
 }
 
-async function sendDiscordMessage(env: Env, content: string) {
+async function sendDiscordMessage(env: Env, embed: any) {
     const channelId = env.DISCORD_CHANNEL_ID;
     const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: 'POST',
@@ -195,13 +209,13 @@ async function sendDiscordMessage(env: Env, content: string) {
             'Authorization': `Bot ${env.DISCORD_TOKEN}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ embeds: [embed] })
     });
     if (response.ok) return response.json() as Promise<any>;
     return null;
 }
 
-async function updateDiscordMessage(env: Env, messageId: string, content: string) {
+async function updateDiscordMessage(env: Env, messageId: string, embed: any) {
     const channelId = env.DISCORD_CHANNEL_ID;
     await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
         method: 'PATCH',
@@ -209,6 +223,6 @@ async function updateDiscordMessage(env: Env, messageId: string, content: string
             'Authorization': `Bot ${env.DISCORD_TOKEN}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ embeds: [embed] })
     });
 }
