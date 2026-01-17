@@ -11,6 +11,7 @@ export default {
             const signature = request.headers.get('x-signature-ed25519');
             const timestamp = request.headers.get('x-signature-timestamp');
             const body = await request.text();
+            console.log(`[Interaction] Received interaction request`);
 
             const isValidRequest = await isValidRequestSignature(body, signature, timestamp, env.DISCORD_PUBLIC_KEY);
             if (!isValidRequest) {
@@ -20,6 +21,7 @@ export default {
             const interaction = JSON.parse(body);
 
             if (interaction.type === InteractionType.PING) {
+                console.log(`[Interaction] Responding to PING`);
                 return new Response(JSON.stringify({ type: InteractionResponseType.PONG }), {
                     headers: { 'Content-Type': 'application/json' },
                 });
@@ -27,6 +29,7 @@ export default {
 
             if (interaction.type === InteractionType.APPLICATION_COMMAND) {
                 const { name } = interaction.data;
+                console.log(`[Interaction] Command received: ${name}`);
                 if (name === 'viikongeimeri') {
                     return handleViikonGeimeri(interaction, env);
                 }
@@ -43,11 +46,13 @@ export default {
         const day = now.getUTCDay(); // 0 is Sunday
 
         // Every minute: Track playtimes
+        console.log(`[Scheduled] Job started. Cron: ${event.cron}`);
         ctx.waitUntil(trackPlaytimes(env));
 
         // Sunday 21:00 (approx): Send weekly message
         // Note: Cloudflare Crons are UTC.
         if (event.cron === "0 21 * * 0") {
+            console.log(`[Scheduled] Sending weekly summary`);
             ctx.waitUntil(sendWeeklySummary(env));
         }
 
@@ -64,7 +69,12 @@ async function isValidRequestSignature(body: string, signature: string | null, t
 
 async function trackPlaytimes(env: Env) {
     const GUILD_ID = env.DISCORD_GUILD_ID;
-    if (!GUILD_ID) return;
+    if (!GUILD_ID) {
+        console.warn(`[Tracking] DISCORD_GUILD_ID is not set`);
+        return;
+    }
+
+    console.log(`[Tracking] Starting playtime tracking for guild: ${GUILD_ID}`);
 
     try {
         const response = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/widget.json`);

@@ -11,6 +11,8 @@ export async function handleViikonGeimeri(interaction: any, env: Env): Promise<R
     const week = options.find((o: any) => o.name === 'week')?.value || currentWeek;
     const year = options.find((o: any) => o.name === 'year')?.value || currentYear;
 
+    console.log(`[Command] Executing viikongeimeri for week ${week}/${year}`);
+
     try {
         // 1. Top 10 gamers (total playtime)
         const topGamers = await env.DB.prepare(

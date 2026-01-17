@@ -48,14 +48,17 @@ export async function updateLiigaScores(env: Env) {
     const dateStr = now.toISOString().split('T')[0];
 
     const kvKey = `liiga_state_${dateStr}`;
+    console.log(`[Liiga] Updating scores for: ${dateStr}`);
     let state: LiigaState | null = await env.LIIGA_KV.get(kvKey, 'json');
 
     if (state?.noGamesToday) {
+        console.log(`[Liiga] Skipped (No games today marked in KV)`);
         return;
     }
 
     const gamesData = await fetchLiigaGames(dateStr);
     if (!gamesData || gamesData.length === 0) {
+        console.log(`[Liiga] No games found in API for ${dateStr}`);
         if (!state) {
             state = {
                 messageId: null,
@@ -97,11 +100,13 @@ export async function updateLiigaScores(env: Env) {
         // Send new message
         const sentMessage = await sendDiscordMessage(env, messageContent);
         if (sentMessage) {
+            console.log(`[Liiga] Sent new message: ${sentMessage.id}`);
             state.messageId = sentMessage.id;
         }
     } else if (state.messageId) {
         // Update existing message if content changed or score changed
         // For simplicity, we update if any game is active or if it's the first time
+        console.log(`[Liiga] Updating existing message: ${state.messageId}`);
         await updateDiscordMessage(env, state.messageId, messageContent);
     }
 
