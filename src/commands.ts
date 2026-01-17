@@ -1,6 +1,6 @@
 import { InteractionResponseType } from 'discord-interactions';
 import { getISOWeek, getYear, startOfISOWeek, endOfISOWeek, format } from 'date-fns';
-import { Env } from './index';
+import { Env } from './types';
 
 export async function handleViikonGeimeri(interaction: any, env: Env): Promise<Response> {
     const options = interaction.data.options || [];

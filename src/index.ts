@@ -1,15 +1,9 @@
 import { InteractionType, InteractionResponseType, verifyKey } from 'discord-interactions';
 import { getISOWeek, getYear } from 'date-fns';
 import { handleViikonGeimeri } from './commands';
+import { Env } from './types';
+import { updateLiigaScores } from './liiga';
 
-export interface Env {
-    DB: D1Database;
-    DISCORD_APPLICATION_ID: string;
-    DISCORD_PUBLIC_KEY: string;
-    DISCORD_TOKEN: string;
-    DISCORD_GUILD_ID: string;
-    DISCORD_CHANNEL_ID: string;
-}
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -56,7 +50,11 @@ export default {
         if (event.cron === "0 21 * * 0") {
             ctx.waitUntil(sendWeeklySummary(env));
         }
+
+        // Liiga tracking logic
+        ctx.waitUntil(updateLiigaScores(env));
     },
+
 };
 
 async function isValidRequestSignature(body: string, signature: string | null, timestamp: string | null, publicKey: string): Promise<boolean> {

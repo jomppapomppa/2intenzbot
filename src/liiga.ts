@@ -1,0 +1,209 @@
+import { Env } from './types';
+
+export interface LiigaGame {
+    id: number;
+    start: string;
+    homeTeam: {
+        teamName: string;
+        goals: number;
+        goalEvents: LiigaGoalEvent[];
+    };
+    awayTeam: {
+        teamName: string;
+        goals: number;
+        goalEvents: LiigaGoalEvent[];
+    };
+    started: boolean;
+    ended: boolean;
+    gameTime: number;
+    currentPeriod: number;
+    finishedType: string;
+}
+
+export interface LiigaGoalEvent {
+    scorerPlayer?: {
+        firstName: string;
+        lastName: string;
+    };
+    homeTeamScore: number;
+    awayTeamScore: number;
+    period: number;
+    gameTime: number;
+    goalTypes: string[];
+}
+
+interface LiigaState {
+    messageId: string | null;
+    lastChecked: string;
+    games: Record<number, {
+        lastGoalCount: number;
+        status: string;
+    }>;
+    noGamesToday?: boolean;
+}
+
+export async function updateLiigaScores(env: Env) {
+    const now = new Date();
+    // Use Finland time (UTC+2)
+    const dateStr = now.toISOString().split('T')[0];
+
+    const kvKey = `liiga_state_${dateStr}`;
+    let state: LiigaState | null = await env.LIIGA_KV.get(kvKey, 'json');
+
+    if (state?.noGamesToday) {
+        return;
+    }
+
+    const gamesData = await fetchLiigaGames(dateStr);
+    if (!gamesData || gamesData.length === 0) {
+        if (!state) {
+            state = {
+                messageId: null,
+                lastChecked: now.toISOString(),
+                games: {},
+                noGamesToday: true
+            };
+        } else {
+            state.noGamesToday = true;
+            state.lastChecked = now.toISOString();
+        }
+        await env.LIIGA_KV.put(kvKey, JSON.stringify(state));
+        return;
+    }
+
+    const firstGameStart = new Date(gamesData[0].start);
+    const thirtyMinBeforeFirst = new Date(firstGameStart.getTime() - 30 * 60 * 1000);
+
+    // Check if we should be polling
+    const anyActive = gamesData.some(g => g.started && !g.ended);
+    const shouldStartNotify = now >= thirtyMinBeforeFirst && !state?.messageId;
+
+    if (!anyActive && !shouldStartNotify && state?.messageId) {
+        // All games ended, or not yet time to notify
+        return;
+    }
+
+    if (!state) {
+        state = {
+            messageId: null,
+            lastChecked: now.toISOString(),
+            games: {}
+        };
+    }
+
+    const messageContent = formatDiscordMessage(gamesData);
+
+    if (!state.messageId && shouldStartNotify) {
+        // Send new message
+        const sentMessage = await sendDiscordMessage(env, messageContent);
+        if (sentMessage) {
+            state.messageId = sentMessage.id;
+        }
+    } else if (state.messageId) {
+        // Update existing message if content changed or score changed
+        // For simplicity, we update if any game is active or if it's the first time
+        await updateDiscordMessage(env, state.messageId, messageContent);
+    }
+
+    // Update state
+    for (const game of gamesData) {
+        state.games[game.id] = {
+            lastGoalCount: game.homeTeam.goals + game.awayTeam.goals,
+            status: game.finishedType
+        };
+    }
+    state.lastChecked = now.toISOString();
+
+    await env.LIIGA_KV.put(kvKey, JSON.stringify(state));
+}
+
+async function fetchLiigaGames(date: string): Promise<LiigaGame[]> {
+    try {
+        const url = `https://liiga.fi/api/v2/games?tournament=runkosarja&date=${date}`;
+        const response = await fetch(url);
+        if (!response.ok) return [];
+        const data: any = await response.json();
+        return data.games || [];
+    } catch (err) {
+        console.error('Error fetching Liiga games:', err);
+        return [];
+    }
+}
+
+function formatDiscordMessage(games: LiigaGame[]): string {
+    return games.map(game => {
+        const home = game.homeTeam.teamName;
+        const away = game.awayTeam.teamName;
+        const homeScore = game.homeTeam.goals;
+        const awayScore = game.awayTeam.goals;
+
+        if (!game.started) {
+            const startTime = new Date(game.start).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Helsinki' });
+            return `${home} ${startTime} ${away}`;
+        }
+
+        const timePlayed = formatGameTime(game.gameTime);
+        const ongoingStar = !game.ended ? '*' : '';
+        let line = `${home} ${homeScore} - ${awayScore} ${away} (${timePlayed}${ongoingStar})`;
+
+        const lastGoal = getLastGoal(game);
+        if (lastGoal) {
+            const lastHomeScore = lastGoal.homeTeamScore;
+            const lastAwayScore = lastGoal.awayTeamScore;
+
+            const isHomeGoal = game.homeTeam.goalEvents.some(e => e.gameTime === lastGoal.gameTime && e.scorerPlayer?.lastName === lastGoal.scorerPlayer?.lastName);
+
+            const homeScoreStr = isHomeGoal ? `**${lastHomeScore}**` : `${lastHomeScore}`;
+            const awayScoreStr = !isHomeGoal ? `**${lastAwayScore}**` : `${lastAwayScore}`;
+
+            const scorerName = lastGoal.scorerPlayer ?
+                `${lastGoal.scorerPlayer.firstName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.firstName.slice(1).toLowerCase()} ${lastGoal.scorerPlayer.lastName.charAt(0).toUpperCase()}${lastGoal.scorerPlayer.lastName.slice(1).toLowerCase()}`
+                : 'Tuntematon';
+
+            const goalType = lastGoal.goalTypes.length > 0 ? ` (${lastGoal.goalTypes.join(', ')})` : '';
+            const goalTime = formatGameTime(lastGoal.gameTime);
+            line += `\n- ${homeScoreStr} - ${awayScoreStr} ${goalTime} ${scorerName}${goalType}`;
+        }
+
+        return line;
+    }).join('\n');
+}
+
+function formatGameTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getLastGoal(game: LiigaGame): LiigaGoalEvent | null {
+    const homeGoals = game.homeTeam.goalEvents || [];
+    const awayGoals = game.awayTeam.goalEvents || [];
+    const allGoals = [...homeGoals, ...awayGoals].sort((a, b) => b.gameTime - a.gameTime);
+    return allGoals.length > 0 ? allGoals[0] : null;
+}
+
+async function sendDiscordMessage(env: Env, content: string) {
+    const channelId = env.DISCORD_CHANNEL_ID;
+    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bot ${env.DISCORD_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content })
+    });
+    if (response.ok) return response.json() as Promise<any>;
+    return null;
+}
+
+async function updateDiscordMessage(env: Env, messageId: string, content: string) {
+    const channelId = env.DISCORD_CHANNEL_ID;
+    await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bot ${env.DISCORD_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content })
+    });
+}

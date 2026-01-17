@@ -9,6 +9,10 @@ compatibility_date = "2024-01-01"
 # DISCORD_GUILD_ID = ""
 # DISCORD_CHANNEL_ID = ""
 
+[[kv_namespaces]]
+binding = "LIIGA_KV"
+id = "682df7a7edc44fb49e569863f1a4e0fb"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "2intenzbot"
