@@ -80,32 +80,33 @@ async function trackPlaytimes(env: Env) {
         const nowIso = now.toISOString();
 
         for (const member of members) {
-            if (member.activity && member.activity.name) {
-                const username = `${member.username}#${member.discriminator}`;
-                const gameName = member.activity.name;
+            if (!member.game?.name) {
+                continue;
+            }
+            const username = `${member.username}#${member.discriminator}`;
+            const gameName = member.game.name;
 
-                // Update or Insert session
-                // Logic: If there is a session for this user/game/week/year that was seen in the last 3 minutes, update it.
-                // Otherwise, start a new session.
-                const lastSeenLimit = new Date(now.getTime() - 3 * 60000).toISOString();
+            // Update or Insert session
+            // Logic: If there is a session for this user/game/week/year that was seen in the last 3 minutes, update it.
+            // Otherwise, start a new session.
+            const lastSeenLimit = new Date(now.getTime() - 3 * 60000).toISOString();
 
-                const existing = await env.DB.prepare(
-                    `SELECT start_time FROM playtimes 
-					 WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND last_seen >= ?
-					 ORDER BY last_seen DESC LIMIT 1`
-                ).bind(username, gameName, week, year, lastSeenLimit).first<{ start_time: string }>();
+            const existing = await env.DB.prepare(
+                `SELECT start_time FROM playtimes 
+                    WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND last_seen >= ?
+                    ORDER BY last_seen DESC LIMIT 1`
+            ).bind(username, gameName, week, year, lastSeenLimit).first<{ start_time: string }>();
 
-                if (existing) {
-                    await env.DB.prepare(
-                        `UPDATE playtimes SET last_seen = ?, total_minutes = total_minutes + 1 
-						 WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND start_time = ?`
-                    ).bind(nowIso, username, gameName, week, year, existing.start_time).run();
-                } else {
-                    await env.DB.prepare(
-                        `INSERT INTO playtimes (username, game_name, start_time, last_seen, total_minutes, week, year)
-						 VALUES (?, ?, ?, ?, 1, ?, ?)`
-                    ).bind(username, gameName, nowIso, nowIso, week, year).run();
-                }
+            if (existing) {
+                await env.DB.prepare(
+                    `UPDATE playtimes SET last_seen = ?, total_minutes = total_minutes + 1 
+                        WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND start_time = ?`
+                ).bind(nowIso, username, gameName, week, year, existing.start_time).run();
+            } else {
+                await env.DB.prepare(
+                    `INSERT INTO playtimes (username, game_name, start_time, last_seen, total_minutes, week, year)
+                        VALUES (?, ?, ?, ?, 1, ?, ?)`
+                ).bind(username, gameName, nowIso, nowIso, week, year).run();
             }
         }
     } catch (err) {
