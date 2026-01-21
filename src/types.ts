@@ -5,5 +5,5 @@ export interface Env {
     DISCORD_TOKEN: string;
     DISCORD_GUILD_ID: string;
     DISCORD_CHANNEL_ID: string;
-    LIIGA_KV: KVNamespace;
+    KV: KVNamespace;
 }

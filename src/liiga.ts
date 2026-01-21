@@ -40,6 +40,7 @@ interface LiigaState {
         status: string;
     }>;
     noGamesToday?: boolean;
+    nextNotificationTime?: string;
 }
 
 export async function updateLiigaScores(env: Env) {
@@ -49,10 +50,15 @@ export async function updateLiigaScores(env: Env) {
 
     const kvKey = `liiga_state_${dateStr}`;
     console.log(`[Liiga] Updating scores for: ${dateStr}`);
-    let state: LiigaState | null = await env.LIIGA_KV.get(kvKey, 'json');
+    let state: LiigaState | null = await env.KV.get(kvKey, 'json');
 
     if (state?.noGamesToday) {
         console.log(`[Liiga] Skipped (No games today marked in KV)`);
+        return;
+    }
+
+    if (state?.nextNotificationTime && now < new Date(state.nextNotificationTime)) {
+        console.log(`[Liiga] Skipped (Not yet time for notification: ${state.nextNotificationTime})`);
         return;
     }
 
@@ -70,19 +76,26 @@ export async function updateLiigaScores(env: Env) {
             state.noGamesToday = true;
             state.lastChecked = now.toISOString();
         }
-        await env.LIIGA_KV.put(kvKey, JSON.stringify(state));
+        await env.KV.put(kvKey, JSON.stringify(state));
         return;
     }
 
-    const firstGameStart = new Date(gamesData[0].start);
-    const thirtyMinBeforeFirst = new Date(firstGameStart.getTime() - 30 * 60 * 1000);
+    // Calculate notification start time (15 min before the earliest game)
+    const startTimes = gamesData.map(g => new Date(g.start).getTime());
+    const earliestStart = Math.min(...startTimes);
+    const notificationStartTime = new Date(earliestStart - 15 * 60 * 1000);
 
     // Check if we should be polling
     const anyActive = gamesData.some(g => g.started && !g.ended);
-    const shouldStartNotify = now >= thirtyMinBeforeFirst && !state?.messageId;
+    const shouldStartNotify = now >= notificationStartTime && !state?.messageId;
 
     if (!anyActive && !shouldStartNotify && state?.messageId) {
         // All games ended, or not yet time to notify
+        // Update state to ensure we store nextNotificationTime if needed
+        if (state) {
+            state.nextNotificationTime = notificationStartTime.toISOString();
+            await env.KV.put(kvKey, JSON.stringify(state));
+        }
         return;
     }
 
@@ -118,8 +131,9 @@ export async function updateLiigaScores(env: Env) {
         };
     }
     state.lastChecked = now.toISOString();
+    state.nextNotificationTime = notificationStartTime.toISOString();
 
-    await env.LIIGA_KV.put(kvKey, JSON.stringify(state));
+    await env.KV.put(kvKey, JSON.stringify(state));
 }
 
 async function fetchLiigaGames(date: string): Promise<LiigaGame[]> {
