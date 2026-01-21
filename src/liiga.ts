@@ -43,6 +43,9 @@ interface LiigaState {
     nextNotificationTime?: string;
 }
 
+// In-memory cache to reduce KV read operations
+let memoryStates: Record<string, LiigaState> = {};
+
 export async function updateLiigaScores(env: Env) {
     const now = new Date();
     // Use Finland time (UTC+2)
@@ -50,10 +53,20 @@ export async function updateLiigaScores(env: Env) {
 
     const kvKey = `liiga_state_${dateStr}`;
     console.log(`[Liiga] Updating scores for: ${dateStr}`);
-    let state: LiigaState | null = await env.KV.get(kvKey, 'json');
+
+    // 1. Check in-memory cache first
+    let state: LiigaState | null = memoryStates[kvKey] || null;
+
+    // 2. If not in memory, check KV with cacheTtl
+    if (!state) {
+        state = await env.KV.get(kvKey, { type: 'json', cacheTtl: 60 });
+        if (state) {
+            memoryStates[kvKey] = state;
+        }
+    }
 
     if (state?.noGamesToday) {
-        console.log(`[Liiga] Skipped (No games today marked in KV)`);
+        console.log(`[Liiga] Skipped (No games today marked in cache)`);
         return;
     }
 
@@ -133,6 +146,8 @@ export async function updateLiigaScores(env: Env) {
     state.lastChecked = now.toISOString();
     state.nextNotificationTime = notificationStartTime.toISOString();
 
+    // Update both memory and KV
+    memoryStates[kvKey] = state;
     await env.KV.put(kvKey, JSON.stringify(state));
 }
 
