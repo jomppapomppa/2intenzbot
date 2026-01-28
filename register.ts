@@ -9,9 +9,6 @@ if (!BOT_TOKEN || !APP_ID) {
     process.exit(1);
 }
 
-console.log("ARGS", BOT_TOKEN, APP_ID, GUILD_ID)
-process.exit(0);
-
 const url = GUILD_ID
     ? `https://discord.com/api/v10/applications/${APP_ID}/guilds/${GUILD_ID}/commands`
     : `https://discord.com/api/v10/applications/${APP_ID}/commands`;

@@ -35,7 +35,21 @@ export default {
                 console.log(`[Interaction] Command received: ${name}`);
                 const command = COMMANDS[name];
                 if (command) {
-                    return command.execute(interaction, env);
+                    try {
+                        return await command.execute(interaction, env);
+                    } catch (err) {
+                        console.error(`[Interaction] Error executing command ${name}:`, err);
+                        return new Response(JSON.stringify({
+                            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            data: { content: 'Virhe komentoa suorittaessa.', flags: 64 }
+                        }), { headers: { 'Content-Type': 'application/json' } });
+                    }
+                } else {
+                    console.warn(`[Interaction] Unknown command: ${name}`);
+                    return new Response(JSON.stringify({
+                        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        data: { content: `Tuntematon komento: ${name}`, flags: 64 }
+                    }), { headers: { 'Content-Type': 'application/json' } });
                 }
             }
 
@@ -46,7 +60,21 @@ export default {
 
                 const command = COMMANDS[commandName];
                 if (command && command.handleComponent) {
-                    return command.handleComponent(interaction, env);
+                    try {
+                        return await command.handleComponent(interaction, env);
+                    } catch (err) {
+                        console.error(`[Interaction] Error handling component for ${commandName}:`, err);
+                        return new Response(JSON.stringify({
+                            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            data: { content: 'Virhe komponenttia käsiteltäessä.', flags: 64 }
+                        }), { headers: { 'Content-Type': 'application/json' } });
+                    }
+                } else {
+                    console.warn(`[Interaction] Unknown component command: ${commandName}`);
+                    return new Response(JSON.stringify({
+                        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        data: { content: 'Virhe: Komentoa ei löytynyt komponentille.', flags: 64 }
+                    }), { headers: { 'Content-Type': 'application/json' } });
                 }
             }
         }

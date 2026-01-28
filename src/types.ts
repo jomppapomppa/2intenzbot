@@ -8,8 +8,22 @@ export interface Env {
     KV: KVNamespace;
 }
 
+export interface CommandOption {
+    name: string;
+    description: string;
+    type: number;
+    required?: boolean;
+    choices?: { name: string; value: string | number }[];
+}
+
+export interface CommandData {
+    name: string;
+    description: string;
+    options?: CommandOption[];
+}
+
 export interface Command {
-    data: any;
+    data: CommandData;
     execute: (interaction: any, env: Env) => Promise<Response>;
     handleComponent?: (interaction: any, env: Env) => Promise<Response>;
 }
