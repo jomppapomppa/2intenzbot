@@ -140,7 +140,7 @@ export async function handleCountdown(interaction: any, env: Env): Promise<Respo
 
     return jsonResponse({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: { content: `Countdown asetettu: **${description}** -> ${targetDate.toLocaleString('fi-FI')}` }
+        data: { content: `Countdown asetettu: **${description}** -> ${targetDate.toLocaleString('fi-FI', { timeZone: 'Europe/Helsinki' })}` }
     });
 }
 
