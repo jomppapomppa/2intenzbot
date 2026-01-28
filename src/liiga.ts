@@ -154,9 +154,23 @@ export async function updateLiigaScores(env: Env) {
         state.lastActiveUpdateDone = true;
     }
 
-    // Update both memory and KV
+    const prevState = memoryStates[kvKey];
+    const stateChanged = !prevState ||
+        prevState.messageId !== state.messageId ||
+        prevState.noGamesToday !== state.noGamesToday ||
+        prevState.lastActiveUpdateDone !== state.lastActiveUpdateDone ||
+        JSON.stringify(prevState.games) !== JSON.stringify(state.games);
+
+    // Update memory cache always
     memoryStates[kvKey] = state;
-    await env.KV.put(kvKey, JSON.stringify(state));
+
+    // Only update KV if something meaningful changed to save writes
+    if (stateChanged) {
+        console.log(`[Liiga] State changed, updating KV`);
+        await env.KV.put(kvKey, JSON.stringify(state));
+    } else {
+        console.log(`[Liiga] No changes, skipping KV update`);
+    }
 }
 
 async function fetchLiigaGames(date: string): Promise<LiigaGame[]> {
