@@ -11,4 +11,5 @@ export interface Env {
 export interface Command {
     data: any;
     execute: (interaction: any, env: Env) => Promise<Response>;
+    handleComponent?: (interaction: any, env: Env) => Promise<Response>;
 }

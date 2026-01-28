@@ -38,6 +38,17 @@ export default {
                     return command.execute(interaction, env);
                 }
             }
+
+            if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
+                const customId = interaction.data.custom_id;
+                const commandName = customId.split(':')[0];
+                console.log(`[Interaction] Component received for command: ${commandName}`);
+
+                const command = COMMANDS[commandName];
+                if (command && command.handleComponent) {
+                    return command.handleComponent(interaction, env);
+                }
+            }
         }
 
         return new Response('Not Found', { status: 404 });
