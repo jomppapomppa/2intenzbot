@@ -1,10 +1,13 @@
 import { InteractionType, InteractionResponseType, verifyKey } from 'discord-interactions';
 import { getISOWeek, getYear } from 'date-fns';
-import { handleViikonGeimeri } from './commands';
+import { handleViikonGeimeri, handleCountdown } from './commands';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
 
-
+// Memory cache for optimizations
+let memoryCountdown: { targetDate: string; description: string } | null = null;
+let lastNickname: string | null = null;
+let lastCountdownFetch: number = 0;
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         if (request.method === 'POST') {
@@ -33,6 +36,9 @@ export default {
                 if (name === 'viikongeimeri') {
                     return handleViikonGeimeri(interaction, env);
                 }
+                if (name === 'countdown') {
+                    return handleCountdown(interaction, env);
+                }
             }
         }
 
@@ -58,9 +64,91 @@ export default {
 
         // Liiga tracking logic
         ctx.waitUntil(updateLiigaScores(env));
+
+        // Countdown tracking logic
+        ctx.waitUntil(updateCountdownStatus(env));
     },
 
 };
+
+async function updateCountdownStatus(env: Env) {
+    const nowTs = Date.now();
+
+    // Only fetch from KV if cache is older than 5 minutes
+    if (!memoryCountdown || (nowTs - lastCountdownFetch > 5 * 60 * 1000)) {
+        console.log(`[Countdown] Fetching from KV (Cache expired or empty)`);
+        memoryCountdown = await env.KV.get('active_countdown', { type: 'json', cacheTtl: 60 });
+        lastCountdownFetch = nowTs;
+    }
+
+    if (!memoryCountdown) return;
+
+    const now = new Date();
+    const targetDate = new Date(memoryCountdown.targetDate);
+    const diff = targetDate.getTime() - now.getTime();
+
+    // If more than 24h passed, remove the countdown
+    if (diff < -24 * 60 * 60 * 1000) {
+        console.log(`[Countdown] Finished and 24h passed. Cleaning up.`);
+        await env.KV.delete('active_countdown');
+        memoryCountdown = null;
+        await updateBotNickname(env, ''); // Reset nickname
+        return;
+    }
+
+    let nickname = '';
+    if (diff > 0) {
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+        let timeStr = '';
+        if (days > 0) timeStr += `${days}d `;
+        timeStr += `${hours}h `;
+        timeStr += `${minutes}m`;
+
+        nickname = `${timeStr} - ${memoryCountdown.description}`;
+    } else {
+        nickname = `0h 0m - ${memoryCountdown.description}`;
+    }
+
+    // Discord nickname limit is 32 characters
+    if (nickname.length > 32) {
+        nickname = nickname.substring(0, 29) + '...';
+    }
+
+    // Only update if nickname changed to minimize Discord API writes
+    if (nickname !== lastNickname) {
+        await updateBotNickname(env, nickname);
+        lastNickname = nickname;
+    }
+}
+
+async function updateBotNickname(env: Env, nickname: string) {
+    const GUILD_ID = env.DISCORD_GUILD_ID;
+    if (!GUILD_ID) return;
+
+    console.log(`[Countdown] Updating nickname to: ${nickname}`);
+
+    try {
+        const response = await fetch(`https://discord.com/api/v10/guilds/${GUILD_ID}/members/@me`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bot ${env.DISCORD_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                nick: nickname
+            })
+        });
+
+        if (!response.ok) {
+            console.error(`[Countdown] Failed to update nickname: ${await response.text()}`);
+        }
+    } catch (err) {
+        console.error(`[Countdown] Error updating nickname:`, err);
+    }
+}
 
 async function isValidRequestSignature(body: string, signature: string | null, timestamp: string | null, publicKey: string): Promise<boolean> {
     if (!signature || !timestamp) return false;
