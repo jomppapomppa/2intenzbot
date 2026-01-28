@@ -41,6 +41,7 @@ interface LiigaState {
     }>;
     noGamesToday?: boolean;
     nextNotificationTime?: string;
+    lastActiveUpdateDone?: boolean;
 }
 
 // In-memory cache to reduce KV read operations
@@ -102,8 +103,8 @@ export async function updateLiigaScores(env: Env) {
     const anyActive = gamesData.some(g => g.started && !g.ended);
     const shouldStartNotify = now >= notificationStartTime && !state?.messageId;
 
-    if (!anyActive && !shouldStartNotify && state?.messageId) {
-        // All games ended, or not yet time to notify
+    if (!anyActive && !shouldStartNotify && state?.messageId && state.lastActiveUpdateDone) {
+        // All games ended and we already did the final update, or not yet time to notify
         // Update state to ensure we store nextNotificationTime if needed
         if (state) {
             state.nextNotificationTime = notificationStartTime.toISOString();
@@ -145,6 +146,13 @@ export async function updateLiigaScores(env: Env) {
     }
     state.lastChecked = now.toISOString();
     state.nextNotificationTime = notificationStartTime.toISOString();
+
+    // Track if we've done the final update after games ended
+    if (anyActive) {
+        state.lastActiveUpdateDone = false;
+    } else if (state.messageId) {
+        state.lastActiveUpdateDone = true;
+    }
 
     // Update both memory and KV
     memoryStates[kvKey] = state;
