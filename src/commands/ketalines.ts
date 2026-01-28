@@ -142,13 +142,23 @@ export const ketalines: Command = {
                 const timeIdx = parseInt(action.substring(1)) - 1;
                 const chosenTime = state.times[timeIdx];
 
-                let player = state.players.find((p: LineupPlayer) => p.name === name);
-                if (player) {
-                    if (!player.times.includes(chosenTime)) {
+                let playerIdx = state.players.findIndex((p: LineupPlayer) => p.name === name);
+                if (playerIdx !== -1) {
+                    const player = state.players[playerIdx];
+                    if (player.times.includes(chosenTime)) {
+                        // Toggle OFF: Remove the time
+                        player.times = player.times.filter(t => t !== chosenTime);
+                        // If no times left, remove the player
+                        if (player.times.length === 0) {
+                            state.players.splice(playerIdx, 1);
+                        }
+                    } else {
+                        // Toggle ON: Add the time
                         player.times.push(chosenTime);
                         player.times.sort(); // Keep times in order
                     }
                 } else {
+                    // New player: Add them with the chosen time
                     state.players.push({ name, times: [chosenTime] });
                 }
             }
