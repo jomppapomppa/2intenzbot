@@ -1,6 +1,6 @@
 import { InteractionType, InteractionResponseType, verifyKey } from 'discord-interactions';
 import { getISOWeek, getYear } from 'date-fns';
-import { handleViikonGeimeri, handleCountdown } from './commands';
+import { COMMANDS } from './commands/index';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
 
@@ -33,11 +33,9 @@ export default {
             if (interaction.type === InteractionType.APPLICATION_COMMAND) {
                 const { name } = interaction.data;
                 console.log(`[Interaction] Command received: ${name}`);
-                if (name === 'viikongeimeri') {
-                    return handleViikonGeimeri(interaction, env);
-                }
-                if (name === 'countdown') {
-                    return handleCountdown(interaction, env);
+                const command = COMMANDS[name];
+                if (command) {
+                    return command.execute(interaction, env);
                 }
             }
         }
@@ -57,7 +55,7 @@ export default {
 
         // Sunday 21:00 (approx): Send weekly message
         // Note: Cloudflare Crons are UTC.
-        if (event.cron === "0 21 * * 0") {
+        if (event.cron === "0 21 * * SUN") {
             console.log(`[Scheduled] Sending weekly summary`);
             ctx.waitUntil(sendWeeklySummary(env));
         }

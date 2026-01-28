@@ -7,3 +7,8 @@ export interface Env {
     DISCORD_CHANNEL_ID: string;
     KV: KVNamespace;
 }
+
+export interface Command {
+    data: any;
+    execute: (interaction: any, env: Env) => Promise<Response>;
+}

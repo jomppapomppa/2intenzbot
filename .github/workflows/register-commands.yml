@@ -14,4 +14,4 @@ jobs:
           node-version: '20'
       - name: Register Commands
         run: |
-          node register.js "${{ secrets.DISCORD_TOKEN }}" "${{ secrets.DISCORD_APPLICATION_ID }}" "${{ secrets.DISCORD_GUILD_ID }}"
+          npm run register -- "${{ secrets.DISCORD_TOKEN }}" "${{ secrets.DISCORD_APPLICATION_ID }}" "${{ secrets.DISCORD_GUILD_ID }}"
