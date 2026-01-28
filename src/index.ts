@@ -102,14 +102,13 @@ async function updateCountdownStatus(env: Env) {
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-        let timeStr = '';
-        if (days > 0) timeStr += `${days}d `;
-        timeStr += `${hours}h `;
-        timeStr += `${minutes}m`;
+        const dd = String(days).padStart(2, '0');
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(minutes).padStart(2, '0');
 
-        nickname = `${timeStr} - ${memoryCountdown.description}`;
+        nickname = `${dd}:${hh}:${mm} ${memoryCountdown.description}`;
     } else {
-        nickname = `0h 0m - ${memoryCountdown.description}`;
+        nickname = `00:00:00 ${memoryCountdown.description}`;
     }
 
     // Discord nickname limit is 32 characters
