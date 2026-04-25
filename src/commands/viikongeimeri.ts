@@ -133,11 +133,11 @@ export async function getWeeklyStats(env: Env, week: number, year: number) {
         if (longest) {
             description += `> *Pisin sessio: ${formatDuration(longest.max_session)} (${longest.game_name})*\n`;
         }
-        description += '\n';
-
         labels.push(normalizeUsername(g.username));
         dataPoints.push(parseFloat((g.total / 60).toFixed(1)));
     });
+
+    description += `\n[🌐 Katso koko arkisto](https://viikongeimeri-archive.pages.dev/)`;
 
     // QuickChart generation
     const chartConfig = {
