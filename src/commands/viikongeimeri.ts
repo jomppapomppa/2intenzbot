@@ -1,9 +1,18 @@
 import { InteractionResponseType } from 'discord-interactions';
-import { getISOWeek, getYear } from 'date-fns';
+import { getISOWeek, getYear, startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-fns';
 import { Command, Env } from '../types';
 import { formatDuration, isKnownUser, jsonResponse, normalizeUsername } from './utils';
 
-export async function getWeeklyStats(env: Env, week: number, year: number) {
+export interface WeeklyData {
+    topGamers: { username: string; total: number }[];
+    detailedStats: { username: string; game_name: string; total: number }[];
+    longestSessions: { username: string; max_session: number; game_name: string }[];
+    playDates: { username: string; game_name: string; play_date: string }[];
+    week: number;
+    year: number;
+}
+
+export async function getWeeklyData(env: Env, week: number, year: number): Promise<WeeklyData | null> {
     // 1. Top 10 gamers (total playtime)
     const topGamers = await env.DB.prepare(
         `SELECT username, SUM(total_minutes) as total 
@@ -34,23 +43,93 @@ export async function getWeeklyStats(env: Env, week: number, year: number) {
          GROUP BY username`
     ).bind(week, year).all<{ username: string; max_session: number; game_name: string }>();
 
+    // 4. Play dates for streaks
+    const usernames = topGamers.results.map(g => g.username);
+    const placeholders = usernames.map(() => '?').join(',');
+    
+    // Get end of week date
+    let dateObj = setYear(new Date(), year);
+    dateObj = setISOWeek(dateObj, week);
+    const weekEnd = endOfISOWeek(dateObj);
+    const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+    const playDates = await env.DB.prepare(`
+        SELECT DISTINCT username, game_name, date(start_time) as play_date 
+        FROM playtimes 
+        WHERE username IN (${placeholders}) 
+        AND date(start_time) <= ?
+        ORDER BY play_date DESC
+    `).bind(...usernames, weekEndStr).all<{ username: string; game_name: string; play_date: string }>();
+
+    return {
+        topGamers: topGamers.results,
+        detailedStats: detailedStats.results,
+        longestSessions: longestSessions.results,
+        playDates: playDates.results,
+        week,
+        year
+    };
+}
+
+export async function getWeeklyStats(env: Env, week: number, year: number) {
+    const data = await getWeeklyData(env, week, year);
+    if (!data) return null;
+
     // Build the message content
     let description = `### 🏆 Viikon Geimeri (${week}/${year})\n`;
 
     const labels: string[] = [];
     const dataPoints: number[] = [];
 
-    topGamers.results.forEach((g: { username: string; total: number }, i: number) => {
+    // Helper: Calculate streak for a user/game ending at the week's end
+    const getStreak = (user: string, game: string) => {
+        const dates = data.playDates
+            .filter(d => d.username === user && d.game_name === game)
+            .map(d => new Date(d.play_date).getTime());
+        
+        if (dates.length === 0) return 0;
+        
+        // Get end of week
+        let dateObj = setYear(new Date(), data.year);
+        dateObj = setISOWeek(dateObj, data.week);
+        const weekEnd = endOfISOWeek(dateObj);
+        weekEnd.setHours(0,0,0,0);
+        const weekEndTime = weekEnd.getTime();
+        const weekStartTime = startOfISOWeek(dateObj).getTime();
+
+        // Find latest play date that is within or before this week
+        const latestInWeek = dates.find(d => d <= weekEndTime && d >= weekStartTime);
+        if (!latestInWeek) return 0;
+        
+        let streak = 1;
+        let checkTime = latestInWeek;
+        
+        while (true) {
+            const dayBefore = checkTime - (24 * 60 * 60 * 1000);
+            if (dates.includes(dayBefore)) {
+                streak++;
+                checkTime = dayBefore;
+            } else {
+                break;
+            }
+        }
+        return streak >= 2 ? streak : 0;
+    };
+
+    data.topGamers.forEach((g, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
         const normalizedName = normalizeUsername(g.username);
         description += `**${medal} ${normalizedName}**: ${formatDuration(g.total)}\n`;
 
         // Detail games
-        const userGames = detailedStats.results.filter((s: { username: string }) => s.username === g.username);
-        description += `> ${userGames.map((ug: { game_name: string; total: number }) => `${ug.game_name} (${formatDuration(ug.total)})`).join(', ')}\n`;
+        const userGames = data.detailedStats.filter(s => s.username === g.username);
+        description += `> ${userGames.map(ug => {
+            const streak = getStreak(ug.username, ug.game_name);
+            return `${ug.game_name} (${formatDuration(ug.total)})${streak > 0 ? `, streak x${streak}` : ''}`;
+        }).join(', ')}\n`;
 
         // Longest session
-        const longest = longestSessions.results.find((ls: { username: string }) => ls.username === g.username);
+        const longest = data.longestSessions.find(ls => ls.username === g.username);
         if (longest) {
             description += `> *Pisin sessio: ${formatDuration(longest.max_session)} (${longest.game_name})*\n`;
         }
@@ -80,7 +159,7 @@ export async function getWeeklyStats(env: Env, week: number, year: number) {
     const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&bkg=white&w=500&h=300`;
 
     return {
-        winnerName: normalizeUsername(topGamers.results[0].username),
+        winnerName: normalizeUsername(data.topGamers[0].username),
         embed: {
             title: `Geimitilastot - Viikko ${week}, ${year}`,
             description: description,
@@ -134,14 +213,14 @@ export const viikongeimeri: Command = {
 
         try {
             const stats = await getWeeklyStats(env, week, year);
- 
+
             if (!stats) {
                 return jsonResponse({
                     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                     data: { content: `Ei pelidataa viikolle ${week}/${year}.` }
                 });
             }
- 
+
             return jsonResponse({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                 data: {

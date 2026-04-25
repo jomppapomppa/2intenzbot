@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "register": "tsx register.ts"
+    "register": "tsx register.ts",
+    "build:archive": "tsx scripts/build-archive.ts"
   },
   "keywords": [],
   "author": "",
