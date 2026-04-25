@@ -2,8 +2,8 @@ name: Deploy Viikon Geimeri Archive
 
 on:
   schedule:
-    # Runs every Sunday at 21:05 UTC (10 mins after the bot summary)
-    - cron: '5 ms * * 0'
+    # Runs every Sunday at 21:00 UTC (5 mins after the bot summary)
+    - cron: '0 21 * * 0'
   workflow_dispatch: # Allows manual triggering from the GitHub UI
 
 jobs:
