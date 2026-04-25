@@ -4,6 +4,7 @@ import { COMMANDS } from './commands/index';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
 import { isKnownUser, normalizeUsername, resolveAlias } from './commands/utils';
+import { getWeeklyStats } from './commands/viikongeimeri';
 
 // Memory cache for optimizations
 let memoryCountdown: { targetDate: string; description: string } | null = null;
@@ -93,9 +94,9 @@ export default {
         console.log(`[Scheduled] Job started. Cron: ${event.cron}`);
         ctx.waitUntil(trackPlaytimes(env));
 
-        // Sunday 21:00 (approx): Send weekly message
+        // Sunday 20:55 (approx): Send weekly message
         // Note: Cloudflare Crons are UTC.
-        if (event.cron === "0 21 * * SUN") {
+        if (event.cron === "55 20 * * SUN") {
             console.log(`[Scheduled] Sending weekly summary`);
             ctx.waitUntil(sendWeeklySummary(env));
         }
@@ -261,23 +262,8 @@ async function sendWeeklySummary(env: Env) {
     const year = getYear(now);
 
     try {
-        // 1. Get the winner (#1)
-        const top = await env.DB.prepare(
-            `SELECT username FROM playtimes 
-			 WHERE week = ? AND year = ? 
-			 GROUP BY username 
-			 ORDER BY SUM(total_minutes) DESC LIMIT 1`
-        ).bind(week, year).first<{ username: string }>();
-
-        if (!top) return;
-
-        const winnerName = top.username.split('#')[0];
-        const message = `${winnerName} äiä o viikon geimeri, gz!!!`;
-
-        // 2. Fetch the full stats using the slash command logic (mocked interaction)
-        // Or just perform a REST call to Discord to post the message.
-        // For simplicity, we just send a text message with the winner.
-        // If we want the full embed, we should extract the embed building logic to a helper.
+        const stats = await getWeeklyStats(env, week, year);
+        if (!stats) return;
 
         const channelId = env.DISCORD_CHANNEL_ID;
         if (!channelId) return;
@@ -289,10 +275,10 @@ async function sendWeeklySummary(env: Env) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                content: `**${winnerName} äiä o viikon geimeri, gz!!!**\n\nKäytä \`/viikongeimeri\` nähdäksesi täydet tilastot!`
+                content: `**${stats.winnerName} äiä o viikon geimeri, gz!!!**`,
+                embeds: [stats.embed]
             })
         });
-
     } catch (err) {
         console.error('Error sending weekly summary:', err);
     }
