@@ -1,7 +1,6 @@
 name = "2intenzbot"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
-pages_build_output_dir = "archive"
 
 [vars]
 # DISCORD_APPLICATION_ID = ""

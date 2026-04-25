@@ -5,7 +5,7 @@ import { startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-
 import { fi } from 'date-fns/locale';
 
 // Configuration
-const DB_NAME = "2intenzbot";
+const DB_ID = "074a8322-9628-452a-b512-51205027873e";
 const OUTPUT_DIR = path.join(__dirname, "../archive");
 
 // Utility: Run D1 Query via Wrangler
@@ -13,7 +13,7 @@ function queryD1(sql: string): any[] {
     const normalizedSql = sql.replace(/\s+/g, ' ').trim();
     console.log(`[Query] Running: ${normalizedSql.substring(0, 60)}...`);
     try {
-        const cmd = `npx wrangler d1 execute ${DB_NAME} --remote --command "${normalizedSql.replace(/"/g, '\\"')}" --json`;
+        const cmd = `npx wrangler d1 execute ${DB_ID} --remote --command "${normalizedSql.replace(/"/g, '\\"')}" --json`;
         const output = execSync(cmd).toString();
         // Wrangler outputs an array of results (one per statement)
         const results = JSON.parse(output);
