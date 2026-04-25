@@ -3,6 +3,7 @@ import { getISOWeek, getYear } from 'date-fns';
 import { COMMANDS } from './commands/index';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
+import { isKnownUser, normalizeUsername, resolveAlias } from './commands/utils';
 
 // Memory cache for optimizations
 let memoryCountdown: { targetDate: string; description: string } | null = null;
@@ -215,8 +216,16 @@ async function trackPlaytimes(env: Env) {
             if (!member.game?.name) {
                 continue;
             }
-            const username = `${member.username}#${member.discriminator}`;
+            let username = normalizeUsername(`${member.username}#${member.discriminator}`);
             const gameName = member.game.name;
+ 
+            // Resolve alias (e.g. k... -> kalle)
+            username = await resolveAlias(username, env);
+ 
+            // Check if user is known
+            if (!(await isKnownUser(username, env))) {
+                continue;
+            }
 
             // Update or Insert session
             // Logic: If there is a session for this user/game/week/year that was seen in the last 3 minutes, update it.

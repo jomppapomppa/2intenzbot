@@ -1,7 +1,7 @@
 import { InteractionResponseType } from 'discord-interactions';
 import { getISOWeek, getYear } from 'date-fns';
 import { Command, Env } from '../types';
-import { formatDuration, jsonResponse } from './utils';
+import { formatDuration, isKnownUser, jsonResponse, normalizeUsername } from './utils';
 
 export const viikongeimeri: Command = {
     data: {
@@ -30,6 +30,18 @@ export const viikongeimeri: Command = {
 
         const week = options.find((o: any) => o.name === 'week')?.value || currentWeek;
         const year = options.find((o: any) => o.name === 'year')?.value || currentYear;
+
+        // Restriction: Only known users can use this command
+        const callerName = normalizeUsername(interaction.member?.user?.username || interaction.user?.username || 'Tuntematon');
+        if (!(await isKnownUser(callerName, env))) {
+            return jsonResponse({
+                type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                data: {
+                    content: 'Et ole tunnettujen pelaajien listalla. Pyydä ylläpitäjää lisäämään sinut.',
+                    flags: 64
+                }
+            });
+        }
 
         console.log(`[Command] Executing viikongeimeri for week ${week}/${year}`);
 
@@ -75,7 +87,8 @@ export const viikongeimeri: Command = {
 
             topGamers.results.forEach((g: { username: string; total: number }, i: number) => {
                 const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-                description += `**${medal} ${g.username}**: ${formatDuration(g.total)}\n`;
+                const normalizedName = normalizeUsername(g.username);
+                description += `**${medal} ${normalizedName}**: ${formatDuration(g.total)}\n`;
 
                 // Detail games
                 const userGames = detailedStats.results.filter((s: { username: string }) => s.username === g.username);
@@ -88,7 +101,7 @@ export const viikongeimeri: Command = {
                 }
                 description += '\n';
 
-                labels.push(g.username.split('#')[0]);
+                labels.push(normalizeUsername(g.username));
                 dataPoints.push(g.total);
             });
 
