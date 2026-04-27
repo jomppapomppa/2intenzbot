@@ -46,6 +46,7 @@ interface LiigaState {
 
 // In-memory cache to reduce KV read operations
 let memoryStates: Record<string, LiigaState> = {};
+let memoryTournament: { data: { tournamentType: string } | null, expires: number } | null = null;
 
 export async function updateLiigaScores(env: Env) {
     const now = new Date();
@@ -76,7 +77,7 @@ export async function updateLiigaScores(env: Env) {
         return;
     }
 
-    const gamesData = await fetchLiigaGames(dateStr);
+    const gamesData = await fetchLiigaGames(env, dateStr);
     if (!gamesData || gamesData.length === 0) {
         console.log(`[Liiga] No games found in API for ${dateStr}`);
         if (!state) {
@@ -173,9 +174,70 @@ export async function updateLiigaScores(env: Env) {
     }
 }
 
-async function fetchLiigaGames(date: string): Promise<LiigaGame[]> {
+async function getOngoingTournament(env: Env) {
+    const now = Date.now();
+    const kvKey = 'liiga_tournament_info';
+
+    // 1. Memory Cache
+    if (memoryTournament && now < memoryTournament.expires) {
+        return memoryTournament.data;
+    }
+
+    // 2. KV Cache
     try {
-        const url = `https://liiga.fi/api/v2/games?tournament=runkosarja&date=${date}`;
+        const cached = await env.KV.get(kvKey, { type: 'json' }) as any;
+        if (cached && now < cached.expires) {
+            memoryTournament = cached;
+            return cached.data;
+        }
+    } catch (e) {
+        console.error('[Liiga] KV read error:', e);
+    }
+
+    // 3. Builder.io Fetch
+    const url = 'https://cdn.builder.io/api/v3/query/f11503eeae084753968caac3899a5d78/tournaments?apiKey=f11503eeae084753968caac3899a5d78&fields=data%2Cname%2Cid';
+    try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        
+        const data: any = await response.json();
+        const ongoing = data.tournaments?.find((t: any) => 
+            t.name === 'ongoingTournament' && 
+            t.data && 
+            (t.data.tournamentType === 'runkosarja' || t.data.tournamentType === 'playoffs')
+        );
+        
+        let resultData = null;
+        if (ongoing && ongoing.data) {
+            resultData = { tournamentType: ongoing.data.tournamentType };
+        }
+
+        const result = {
+            data: resultData,
+            expires: now + 3600000 // 1 hour cache
+        };
+
+        // Update caches
+        memoryTournament = result;
+        await env.KV.put(kvKey, JSON.stringify(result));
+        
+        return resultData;
+    } catch (err) {
+        console.error('[Liiga] Error fetching ongoing tournament:', err);
+        return null;
+    }
+}
+
+async function fetchLiigaGames(env: Env, date: string): Promise<LiigaGame[]> {
+    try {
+        const tournamentInfo = await getOngoingTournament(env);
+        if (!tournamentInfo) {
+            console.log('[Liiga] No ongoing tournament info found, skipping game fetch');
+            return [];
+        }
+
+        const { tournamentType } = tournamentInfo;
+        const url = `https://liiga.fi/api/v2/games?tournament=${tournamentType}&date=${date}`;
         const response = await fetch(url);
         if (!response.ok) return [];
         const data: any = await response.json();
