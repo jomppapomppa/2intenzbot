@@ -1,28 +1,39 @@
 import { Env } from '../types';
 
 export function normalizeUsername(username: string): string {
-    // Remove #0000 or #0 suffixes
-    return username.replace(/#(0000|0)$/, '');
+    // Remove any #1234 or #0 suffixes but PRESERVE casing
+    return username.replace(/#(\d{4}|0)$/, '');
 }
 
-let knownUsersCache: { users: Set<string>; lastFetched: number } | null = null;
+let knownUsersCache: { users: Map<string, string>; lastFetched: number } | null = null;
 
-export async function isKnownUser(username: string, env: Env): Promise<boolean> {
+/**
+ * Returns the correctly capitalized username from the known users list if it exists,
+ * otherwise returns null.
+ */
+export async function getKnownUser(username: string, env: Env): Promise<string | null> {
     const now = Date.now();
-    // Cache for 5 minutes
     if (!knownUsersCache || (now - knownUsersCache.lastFetched > 5 * 60 * 1000)) {
         console.log(`[KnownUsers] Fetching from KV`);
         try {
             const raw = await env.KV.get('KNOWN_USERS');
-            const users = new Set(raw ? raw.split(/\s+/).filter(u => u.length > 0) : []);
-            knownUsersCache = { users, lastFetched: now };
+            const map = new Map<string, string>();
+            if (raw) {
+                raw.split(/\s+/).filter(u => u.length > 0).forEach(u => {
+                    map.set(u.toLowerCase(), u);
+                });
+            }
+            knownUsersCache = { users: map, lastFetched: now };
         } catch (err) {
             console.error(`[KnownUsers] Error fetching from KV:`, err);
-            // Fallback to empty set but don't cache forever if it failed
-            return false;
+            return null;
         }
     }
-    return knownUsersCache.users.has(username);
+    return knownUsersCache.users.get(username.toLowerCase()) || null;
+}
+
+export async function isKnownUser(username: string, env: Env): Promise<boolean> {
+    return (await getKnownUser(username, env)) !== null;
 }
 
 let aliasesCache: { aliases: Map<string, string>; lastFetched: number } | null = null;

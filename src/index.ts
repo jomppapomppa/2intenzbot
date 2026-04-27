@@ -3,7 +3,7 @@ import { getISOWeek, getYear } from 'date-fns';
 import { COMMANDS } from './commands/index';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
-import { isKnownUser, normalizeUsername, resolveAlias } from './commands/utils';
+import { getKnownUser, isKnownUser, normalizeUsername, resolveAlias } from './commands/utils';
 import { getWeeklyStats } from './commands/viikongeimeri';
 
 // Memory cache for optimizations
@@ -223,10 +223,12 @@ async function trackPlaytimes(env: Env) {
             // Resolve alias (e.g. k... -> kalle)
             username = await resolveAlias(username, env);
  
-            // Check if user is known
-            if (!(await isKnownUser(username, env))) {
+            // Check if user is known and get canonical name
+            const knownName = await getKnownUser(username, env);
+            if (!knownName) {
                 continue;
             }
+            username = knownName;
 
             // Update or Insert session
             // Logic: If there is a session for this user/game/week/year that was seen in the last 3 minutes, update it.
