@@ -7,7 +7,8 @@
     "dev": "tsx scripts/dev.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "register": "tsx register.ts",
-    "build:archive": "tsx scripts/build-archive.ts",
+    "build:viikongeimeri-archive": "tsx src/viikongeimeri/script/build-archive.ts",
+    "build:viikongeimeri-archive:local": "tsx src/viikongeimeri/script/build-archive.ts --local",
     "build:perjantaibiisi-archive": "tsx src/perjantaibiisi/script/build-archive.ts",
     "build:perjantaibiisi-archive:local": "tsx src/perjantaibiisi/script/build-archive.ts --local"
   },
@@ -17,6 +18,7 @@
   "type": "commonjs",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260114.0",
+    "@types/node": "^25.6.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.59.1"

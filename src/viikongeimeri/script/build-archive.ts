@@ -1,19 +1,23 @@
+/// <reference types="node" />
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-fns';
 import { fi } from 'date-fns/locale';
+import { BASE_HTML } from '../template';
 
 // Configuration
 const DB_NAME = "2intenzbot";
-const OUTPUT_DIR = path.join(__dirname, "../archive");
+const OUTPUT_DIR = path.join(__dirname, "../../../output/viikongeimeri");
+const IS_LOCAL = process.argv.includes('--local');
 
 // Utility: Run D1 Query via Wrangler
 function queryD1(sql: string): any[] {
     const normalizedSql = sql.replace(/\s+/g, ' ').trim();
-    console.log(`[Query] Running: ${normalizedSql.substring(0, 60)}...`);
+    console.log(`[Query] Running (${IS_LOCAL ? 'local' : 'remote'}): ${normalizedSql.substring(0, 60)}...`);
     try {
-        const cmd = `npx wrangler d1 execute ${DB_NAME} --remote --command "${normalizedSql.replace(/"/g, '\\"')}" --json`;
+        const mode = IS_LOCAL ? '--local' : '--remote';
+        const cmd = `npx wrangler d1 execute ${DB_NAME} ${mode} --command "${normalizedSql.replace(/"/g, '\\"')}" --json`;
         const output = execSync(cmd).toString();
         // Wrangler outputs an array of results (one per statement)
         const results = JSON.parse(output);
@@ -47,112 +51,10 @@ function getWeekRange(week: number, year: number): { range: string; end: Date } 
     const end = endOfISOWeek(date);
 
     return {
-        range: `${format(start, 'd.M.', { locale: fi })} – ${format(end, 'd.M.yyyy', { locale: fi })}`,
+        range: `${format(start, 'd.M.', { locale: fi })} - ${format(end, 'd.M.yyyy', { locale: fi })}`,
         end: end
     };
 }
-
-// HTML Templates
-const BASE_HTML = (title: string, content: string, extraHead: string = "") => `
-<!DOCTYPE html>
-<html lang="fi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex">
-    <title>${title} | Viikon Geimeri</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --bg: #0f1115;
-            --card-bg: #1a1d23;
-            --text: #e1e4e8;
-            --text-dim: #9ba1a6;
-            --accent: #3498db;
-            --winner: #00ff00;
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            line-height: 1.6;
-        }
-        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
-        h1, h2, h3 { margin-top: 0; font-weight: 800; }
-        h1 { font-size: 2.5rem; letter-spacing: -1px; margin-bottom: 30px; }
-        a { color: var(--accent); text-decoration: none; transition: opacity 0.2s; }
-        a:hover { opacity: 0.8; }
-        
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-        
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .week-link {
-            display: block;
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid transparent;
-            transition: all 0.2s;
-        }
-        .week-link:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .week-link span { color: var(--text-dim); font-size: 0.9rem; }
-        
-        .leaderboard { margin-top: 20px; }
-        .player-entry {
-            padding: 20px 0;
-            border-bottom: 1px solid #2d333b;
-        }
-        .player-entry:last-child { border-bottom: none; }
-        
-        .player-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .player-info { display: flex; align-items: center; gap: 10px; }
-        .rank { width: 30px; font-weight: 800; color: var(--text-dim); }
-        .player-name { font-weight: 600; font-size: 1.1rem; }
-        .player-time { font-family: monospace; color: var(--accent); font-weight: 600; font-size: 1.1rem; }
-        .winner .player-name { color: var(--winner); }
-        
-        .games-list { 
-            list-style: none;
-            padding: 0;
-            margin: 0 0 0 40px;
-            font-size: 0.85rem; 
-            color: var(--text-dim);
-        }
-        .games-list li { margin-bottom: 4px; }
-        .games-list li::before { content: "•"; margin-right: 8px; color: var(--accent); }
-        
-        .session-info { font-size: 0.8rem; font-style: italic; color: var(--text-dim); margin-top: 6px; padding-left: 40px; }
-        
-        .chart-container { position: relative; height: 300px; width: 100%; margin-bottom: 40px; }
-        
-        nav { margin-bottom: 40px; font-size: 0.9rem; }
-        .back-link { display: inline-flex; align-items: center; gap: 8px; }
-    </style>
-    ${extraHead}
-</head>
-<body>
-    <div class="container">
-        ${content}
-    </div>
-</body>
-</html>
-`;
 
 async function main() {
     console.log("🚀 Starting Archive Build...");
@@ -186,7 +88,7 @@ async function main() {
         const topGamers = queryD1(`SELECT username, SUM(total_minutes) as total FROM playtimes WHERE week = ${week} AND year = ${year} GROUP BY username ORDER BY total DESC LIMIT 10`);
         const detailedStats = queryD1(`SELECT username, game_name, SUM(total_minutes) as total FROM playtimes WHERE week = ${week} AND year = ${year} GROUP BY username, game_name ORDER BY username, total DESC`);
         const longestSessions = queryD1(`SELECT username, MAX(total_minutes) as max_session, game_name FROM playtimes WHERE week = ${week} AND year = ${year} GROUP BY username`);
-        
+
         // Fetch ALL play dates for these users to calculate streaks
         const usernames = topGamers.map(g => `'${g.username.replace(/'/g, "''")}'`).join(',');
         const playDates = usernames.length > 0 ? queryD1(`
@@ -202,25 +104,25 @@ async function main() {
             const dates = playDates
                 .filter(d => d.username === user && d.game_name === game)
                 .map(d => new Date(d.play_date).getTime());
-            
+
             if (dates.length === 0) return 0;
-            
+
             let streak = 0;
             let currentDay = getWeekRange(week, year).end;
             currentDay.setHours(0, 0, 0, 0);
-            
+
             // Check backwards from the end of the week
             let targetTime = currentDay.getTime();
-            
+
             // If they didn't play on the last day of the week, check if they played 
             // at all during the week. If not, streak is 0.
             // Actually, let's find the LATEST date they played and check if it's in this week.
             const latestInWeek = dates.find(d => d <= targetTime && d >= targetTime - (7 * 24 * 60 * 60 * 1000));
             if (!latestInWeek) return 0;
-            
+
             let checkTime = latestInWeek;
             streak = 1;
-            
+
             while (true) {
                 const dayBefore = checkTime - (24 * 60 * 60 * 1000);
                 if (dates.includes(dayBefore)) {
@@ -259,9 +161,9 @@ async function main() {
                     </div>
                     <ul class="games-list">
                         ${userGames.map(ug => {
-                            const streak = getStreak(ug.username, ug.game_name);
-                            return `<li>${ug.game_name} (${formatDuration(ug.total)})${streak > 0 ? `, streak x${streak}` : ''}</li>`;
-                        }).join('')}
+                const streak = getStreak(ug.username, ug.game_name);
+                return `<li>${ug.game_name} (${formatDuration(ug.total)})${streak > 0 ? `, streak x${streak}` : ''}</li>`;
+            }).join('')}
                     </ul>
                     ${longest ? `<div class="session-info">Pisin sessio: ${formatDuration(longest.max_session)} (${longest.game_name})</div>` : ''}
                 </div>

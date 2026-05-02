@@ -1,26 +1,21 @@
 import { InteractionType, InteractionResponseType } from 'discord-interactions';
-import { getISOWeek, getYear } from 'date-fns';
 import { toZonedTime, format as formatZoned } from 'date-fns-tz';
-import { COMMANDS } from './commands/index';
+import { COMMANDS } from './commands';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
 import {
-    normalizeUsername,
-    resolveAlias,
-    getKnownUser,
     isValidRequestSignature,
-    sendDiscordMessage
 } from './utils';
-import { getWeeklyStats } from './commands/viikongeimeri';
 import {
     handleVotingWebRequest,
     handlePerjantaibiisiScheduled
 } from './perjantaibiisi';
+import {
+    trackPlaytimes,
+    sendWeeklySummary
+} from './viikongeimeri';
 
-// Memory cache for optimizations
-let memoryCountdown: { targetDate: string; description: string } | null = null;
-let lastNickname: string | null = null;
-let lastCountdownFetch: number = 0;
+import { updateCountdownStatus } from './countdown';
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const webResponse = await handleVotingWebRequest(request, env);
@@ -124,163 +119,3 @@ export default {
         ctx.waitUntil(updateCountdownStatus(env));
     },
 };
-
-async function updateCountdownStatus(env: Env) {
-    const nowTs = Date.now();
-
-    // Only fetch from KV if cache is older than 5 minutes
-    if (!memoryCountdown || (nowTs - lastCountdownFetch > 5 * 60 * 1000)) {
-        console.log(`[Countdown] Fetching from KV (Cache expired or empty)`);
-        memoryCountdown = await env.KV.get('active_countdown', { type: 'json', cacheTtl: 60 });
-        lastCountdownFetch = nowTs;
-    }
-
-    if (!memoryCountdown) return;
-
-    const now = new Date();
-    const targetDate = new Date(memoryCountdown.targetDate);
-    const diff = targetDate.getTime() - now.getTime();
-
-    // If more than 24h passed, remove the countdown
-    if (diff < -24 * 60 * 60 * 1000) {
-        console.log(`[Countdown] Finished and 24h passed. Cleaning up.`);
-        await env.KV.delete('active_countdown');
-        memoryCountdown = null;
-        await updateBotNickname(env, ''); // Reset nickname
-        return;
-    }
-
-    let nickname = '';
-    if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-        const dd = String(days).padStart(2, '0');
-        const hh = String(hours).padStart(2, '0');
-        const mm = String(minutes).padStart(2, '0');
-
-        nickname = `${dd}:${hh}:${mm} ${memoryCountdown.description}`;
-    } else {
-        nickname = `00:00:00 ${memoryCountdown.description}`;
-    }
-
-    // Discord nickname limit is 32 characters
-    if (nickname.length > 32) {
-        nickname = nickname.substring(0, 29) + '...';
-    }
-
-    // Only update if nickname changed to minimize Discord API writes
-    if (nickname !== lastNickname) {
-        await updateBotNickname(env, nickname);
-        lastNickname = nickname;
-    }
-}
-
-async function updateBotNickname(env: Env, nickname: string) {
-    const GUILD_ID = env.DISCORD_GUILD_ID;
-    if (!GUILD_ID) return;
-
-    console.log(`[Countdown] Updating nickname to: ${nickname}`);
-
-    try {
-        const response = await fetch(`https://discord.com/api/v10/guilds/${GUILD_ID}/members/@me`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                nick: nickname
-            })
-        });
-
-        if (!response.ok) {
-            console.error(`[Countdown] Failed to update nickname: ${await response.text()}`);
-        }
-    } catch (err) {
-        console.error(`[Countdown] Error updating nickname:`, err);
-    }
-}
-
-async function trackPlaytimes(env: Env) {
-    const GUILD_ID = env.DISCORD_GUILD_ID;
-    if (!GUILD_ID) {
-        console.warn(`[Tracking] DISCORD_GUILD_ID is not set`);
-        return;
-    }
-
-    try {
-        const response = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/widget.json`);
-        if (!response.ok) return;
-
-        const data: any = await response.json();
-        const members = data.members || [];
-        const now = new Date();
-        const week = getISOWeek(now);
-        const year = getYear(now);
-        const nowIso = now.toISOString();
-
-        for (const member of members) {
-            if (!member.game?.name) continue;
-
-            let username = normalizeUsername(`${member.username}#${member.discriminator}`);
-            const gameName = member.game.name;
-
-            username = await resolveAlias(username, env);
-            const knownName = await getKnownUser(username, env);
-            if (!knownName) continue;
-            username = knownName;
-
-            const lastSeenLimit = new Date(now.getTime() - 3 * 60000).toISOString();
-
-            const existing = await env.DB.prepare(
-                `SELECT start_time FROM playtimes 
-                 WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND last_seen >= ?
-                 ORDER BY last_seen DESC LIMIT 1`
-            ).bind(username, gameName, week, year, lastSeenLimit).first<{ start_time: string }>();
-
-            if (existing) {
-                await env.DB.prepare(
-                    `UPDATE playtimes SET last_seen = ?, total_minutes = total_minutes + 1 
-                     WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND start_time = ?`
-                ).bind(nowIso, username, gameName, week, year, existing.start_time).run();
-            } else {
-                await env.DB.prepare(
-                    `INSERT INTO playtimes (username, game_name, start_time, last_seen, total_minutes, week, year)
-                     VALUES (?, ?, ?, ?, 1, ?, ?)`
-                ).bind(username, gameName, nowIso, nowIso, week, year).run();
-            }
-        }
-    } catch (err) {
-        console.error('Error tracking playtimes:', err);
-    }
-}
-
-async function sendWeeklySummary(env: Env) {
-    const now = new Date();
-    const week = getISOWeek(now);
-    const year = getYear(now);
-
-    try {
-        const stats = await getWeeklyStats(env, week, year);
-        if (!stats) return;
-
-        const channelId = env.DISCORD_CHANNEL_ID;
-        if (!channelId) return;
-
-        await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                content: `**${stats.winnerName} äiä o viikon geimeri, gz!!!**`,
-                embeds: [stats.embed]
-            })
-        });
-    } catch (err) {
-        console.error('Error sending weekly summary:', err);
-    }
-}

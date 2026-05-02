@@ -1,4 +1,5 @@
-import { COMMANDS } from './src/commands/index';
+/// <reference types="node" />
+import { COMMANDS } from './src/commands';
 
 const BOT_TOKEN = process.argv[2];
 const APP_ID = process.argv[3];

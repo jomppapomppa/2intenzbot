@@ -144,10 +144,8 @@ export async function endPerjantaibiisiVoting(env: Env) {
         color: 0xffd700
     };
 
-    await fetch(`https://discord.com/api/v10/channels/${env.PERJANTAIBIISI_CHANNEL_ID}/messages`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bot ${env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embeds: [embed] })
+    await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, {
+        embeds: [embed]
     });
 }
 

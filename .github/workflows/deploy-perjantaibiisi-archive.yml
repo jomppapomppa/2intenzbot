@@ -1,9 +1,9 @@
-name: Deploy Viikon Geimeri Archive
+name: Deploy Perjantaibiisi Archive
 
 on:
   schedule:
-    # Runs every Sunday at 21:00 UTC (5 mins after the bot summary)
-    - cron: '0 21 * * 0'
+    # Runs every Friday at 15:01 UTC
+    - cron: '1 15 * * 5'
   workflow_dispatch: # Allows manual triggering from the GitHub UI
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Build Archive
-        run: npm run build:archive
+        run: npm run build:perjantaibiisi-archive
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -34,7 +34,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy archive --project-name=viikongeimeri-archive --branch=main
+          command: pages deploy output/perjantaibiisi --project-name=perjantaibiisi-archive --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

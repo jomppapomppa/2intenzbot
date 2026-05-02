@@ -9,6 +9,7 @@
     "checkJs": false,
     "noEmit": true,
     "isolatedModules": true,
+    "skipLibCheck": true,
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*"]
