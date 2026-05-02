@@ -1,7 +1,7 @@
 import { getISOWeek, getYear } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { Env } from '../types';
-import { parseYouTubeId } from '../utils';
+import { parseYouTubeId, escapeHtml } from '../utils';
 import { BASE_TEMPLATE } from './template';
 
 export async function handleVotingWebRequest(request: Request, env: Env): Promise<Response | null> {
@@ -74,8 +74,8 @@ export function renderVotingPage(songs: any[], user: { username: string, userId:
     const songListHtml = songs.map((song, index) => `
         <div class="song-card" id="song-${song.id}">
             <div class="song-info">
-                <h3>${song.title}</h3>
-                <p class="proposer">Ehdottaja: ${song.proposer_name} - ${new Date(song.created_at).toLocaleString('fi-FI')}</p>
+                <h3>${escapeHtml(song.title)}</h3>
+                <p class="proposer">Ehdottaja: ${escapeHtml(song.proposer_name)} - ${new Date(song.created_at).toLocaleString('fi-FI')}</p>
             </div>
             <div class="video-container">
                 <iframe width="100%" height="100%" src="https://www.youtube.com/embed/${song.youtube_id}" frameborder="0" allowfullscreen></iframe>
@@ -92,7 +92,7 @@ export function renderVotingPage(songs: any[], user: { username: string, userId:
 
     const votingControlsHtml = songs.map((song) => `
         <div class="vote-row" data-song-id="${song.id}">
-            <span class="song-title-mini">${song.title}</span>
+            <span class="song-title-mini">${escapeHtml(song.title)}</span>
             <div class="btn-group">
                 ${voteButtonsHtml}
             </div>
@@ -104,7 +104,7 @@ export function renderVotingPage(songs: any[], user: { username: string, userId:
 
     const content = `
         <header>
-            <h1>Perjantaibiisi ${dateStr}</h1>
+            <h1>Perjantaibiisi ${escapeHtml(dateStr)}</h1>
             <p class="user-greeting">Kuuntele kappaleet ja valitse lopuksi jokaiselle kappaleelle pistemäärä.</p>
         </header>
 
@@ -126,7 +126,7 @@ export function renderVotingPage(songs: any[], user: { username: string, userId:
 
         <script>
             const songs = ${JSON.stringify(songs)};
-            const token = "${token}";
+            const token = ${JSON.stringify(token)};
             const storageKey = \`pb_votes_rel_\${token}\`;
             let selections = {};
             let hasUnsavedChanges = false;

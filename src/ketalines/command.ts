@@ -40,7 +40,7 @@ export const ketalines: Command = {
                 times.push(t.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Helsinki' }));
             }
 
-            const slug = crypto.randomUUID().slice(0, 8);
+            const slug = crypto.randomUUID().slice(0, 12);
             const state: LineupState = {
                 slug,
                 message,

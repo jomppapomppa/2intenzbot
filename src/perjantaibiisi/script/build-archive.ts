@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-fns';
 import { fi } from 'date-fns/locale';
+import { escapeHtml } from '../../utils/format';
+import { BASE_TEMPLATE } from '../template';
 
 // Configuration
 const DB_NAME = "2intenzbot";
@@ -43,7 +45,6 @@ function getWeekInfo(week: number, year: number) {
     };
 }
 
-import { BASE_TEMPLATE } from '../template';
 
 async function main() {
     console.log("🚀 Building Perjantaibiisi Archive...");
@@ -82,7 +83,7 @@ async function main() {
                     <thead>
                         <tr>
                             <th>Kappale</th>
-                            ${voters.map(v => `<th class="voter-head">${v.voter_name}</th>`).join('')}
+                            ${voters.map(v => `<th class="voter-head">${escapeHtml(v.voter_name)}</th>`).join('')}
                             <th class="total-head">Yht</th>
                         </tr>
                     </thead>
@@ -91,7 +92,7 @@ async function main() {
 
         results.forEach((s, i) => {
             const medal = i === 0 ? '🏆 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : '';
-            tableHtml += `<tr><td>${medal}${s.title}</td>`;
+            tableHtml += `<tr><td>${medal}${escapeHtml(s.title)}</td>`;
             voters.forEach(v => {
                 const vote = allVotes.find(av => av.song_id === s.id && av.voter_name === v.voter_name);
                 const points = vote ? (songCount - vote.score) : '-';
@@ -110,8 +111,8 @@ async function main() {
                 <div class="song-card">
                     <div class="song-info">
                         <span class="score-badge">${s.total_score} pts</span>
-                        <h3>${medal}${s.title}</h3>
-                        <p class="proposer">Ehdottaja: ${s.proposer_name}</p>
+                        <h3>${medal}${escapeHtml(s.title)}</h3>
+                        <p class="proposer">Ehdottaja: ${escapeHtml(s.proposer_name)}</p>
                     </div>
                     ${youtubeId ? `
                     <div class="video-container">
@@ -125,7 +126,7 @@ async function main() {
         const content = `
             <a href="../index.html" class="back-link">← Takaisin arkistoon</a>
             <header>
-                <h1>${title}</h1>
+                <h1>${escapeHtml(title)}</h1>
             </header>
             ${tableHtml}
             <div class="song-list">
@@ -164,9 +165,9 @@ async function main() {
 
             indexContent += `
                 <a href="${w.year}/${w.week}.html" class="week-link">
-                    <div style="font-weight: 800; font-size: 1.2rem; margin-bottom: 1rem;">Perjantaibiisi ${weekInfo.friday}</div>
-                    <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: .5rem;">${winner.title}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">Ehdottaja: ${winner.proposer_name}</div>
+                    <div style="font-weight: 800; font-size: 1.2rem; margin-bottom: 1rem;">Perjantaibiisi ${escapeHtml(weekInfo.friday)}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: .5rem;">${escapeHtml(winner.title)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Ehdottaja: ${escapeHtml(winner.proposer_name)}</div>
                 </a>
             `;
         }

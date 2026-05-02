@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-fns';
 import { fi } from 'date-fns/locale';
+import { escapeHtml } from '../../utils/format';
 import { BASE_HTML } from '../template';
 
 // Configuration
@@ -155,17 +156,17 @@ async function main() {
                     <div class="player-row">
                         <div class="player-info">
                             <div class="rank">${medal}</div>
-                            <div class="player-name">${normalizedName}</div>
+                            <div class="player-name">${escapeHtml(normalizedName)}</div>
                         </div>
                         <div class="player-time">${formatDuration(g.total)}</div>
                     </div>
                     <ul class="games-list">
                         ${userGames.map(ug => {
                 const streak = getStreak(ug.username, ug.game_name);
-                return `<li>${ug.game_name} (${formatDuration(ug.total)})${streak > 0 ? `, streak x${streak}` : ''}</li>`;
+                return `<li>${escapeHtml(ug.game_name)} (${formatDuration(ug.total)})${streak > 0 ? `, streak x${streak}` : ''}</li>`;
             }).join('')}
                     </ul>
-                    ${longest ? `<div class="session-info">Pisin sessio: ${formatDuration(longest.max_session)} (${longest.game_name})</div>` : ''}
+                    ${longest ? `<div class="session-info">Pisin sessio: ${formatDuration(longest.max_session)} (${escapeHtml(longest.game_name)})</div>` : ''}
                 </div>
             `;
         });
@@ -176,9 +177,9 @@ async function main() {
             <nav>
                 <a href="../index.html" class="back-link">← Takaisin arkistoon</a>
             </nav>
-            <h1>${weekTitle}</h1>
+            <h1>${escapeHtml(weekTitle)}</h1>
             <p style="color: var(--text-dim); margin-top: -20px; margin-bottom: 30px; font-weight: 600;">
-                ${getWeekRange(week, year).range}
+                ${escapeHtml(getWeekRange(week, year).range)}
             </p>
             <div class="card">
                 <div class="chart-container">
@@ -241,7 +242,7 @@ async function main() {
                 const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
                 return `
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>${medal} ${normalizeName(g.username)}</span>
+                        <span>${medal} ${escapeHtml(normalizeName(g.username))}</span>
                         <span style="font-family: monospace; opacity: 0.7;">${formatDuration(g.total)}</span>
                     </div>
                 `;
@@ -251,7 +252,7 @@ async function main() {
                 <a href="${year}/${week}.html" class="week-link">
                     <div style="font-weight: 800; font-size: 1.2rem; margin-bottom: 4px;">Viikko ${week}</div>
                     <div style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 12px; font-weight: 600;">
-                        ${getWeekRange(week, year).range}
+                        ${escapeHtml(getWeekRange(week, year).range)}
                     </div>
                     <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 15px; border-top: 1px solid #2d333b; padding-top: 12px;">
                         ${podium}
