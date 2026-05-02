@@ -1,6 +1,6 @@
 import { InteractionResponseType } from 'discord-interactions';
 import { Command, Env } from '../types';
-import { jsonResponse } from './utils';
+import { jsonResponse } from '../utils';
 
 export const countdown: Command = {
     data: {

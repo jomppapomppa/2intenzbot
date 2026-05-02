@@ -1,6 +1,6 @@
 import { InteractionResponseType, MessageComponentTypes, ButtonStyleTypes } from 'discord-interactions';
 import { Command, Env } from '../types';
-import { jsonResponse } from './utils';
+import { jsonResponse } from '../utils';
 
 // In-memory cache for lineups to reduce KV reads
 export interface LineupPlayer {

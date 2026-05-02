@@ -1,10 +1,21 @@
-import { InteractionType, InteractionResponseType, verifyKey } from 'discord-interactions';
+import { InteractionType, InteractionResponseType } from 'discord-interactions';
 import { getISOWeek, getYear } from 'date-fns';
+import { toZonedTime, format as formatZoned } from 'date-fns-tz';
 import { COMMANDS } from './commands/index';
 import { Env } from './types';
 import { updateLiigaScores } from './liiga';
-import { getKnownUser, isKnownUser, normalizeUsername, resolveAlias } from './commands/utils';
+import {
+    normalizeUsername,
+    resolveAlias,
+    getKnownUser,
+    isValidRequestSignature,
+    sendDiscordMessage
+} from './utils';
 import { getWeeklyStats } from './commands/viikongeimeri';
+import {
+    handleVotingWebRequest,
+    handlePerjantaibiisiScheduled
+} from './perjantaibiisi';
 
 // Memory cache for optimizations
 let memoryCountdown: { targetDate: string; description: string } | null = null;
@@ -12,6 +23,9 @@ let lastNickname: string | null = null;
 let lastCountdownFetch: number = 0;
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        const webResponse = await handleVotingWebRequest(request, env);
+        if (webResponse) return webResponse;
+
         if (request.method === 'POST') {
             const signature = request.headers.get('x-signature-ed25519');
             const timestamp = request.headers.get('x-signature-timestamp');
@@ -85,19 +99,21 @@ export default {
     },
 
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-        const now = new Date();
-        const hour = now.getUTCHours();
-        const minute = now.getUTCMinutes();
-        const day = now.getUTCDay(); // 0 is Sunday
+        const nowZoned = toZonedTime(new Date(), 'Europe/Helsinki');
+        const day = nowZoned.getDay(); // 0 is Sunday, 5 is Friday
+        const hour = nowZoned.getHours();
+        const minute = nowZoned.getMinutes();
+
+        console.log(`[Scheduled] Job started. Time (FI): ${formatZoned(nowZoned, 'yyyy-MM-dd HH:mm:ss')}`);
 
         // Every minute: Track playtimes
-        console.log(`[Scheduled] Job started. Cron: ${event.cron}`);
         ctx.waitUntil(trackPlaytimes(env));
 
-        // Sunday 20:55 (approx): Send weekly message
-        // Note: Cloudflare Crons are UTC.
+        // Perjantaibiisi scheduling
+        ctx.waitUntil(handlePerjantaibiisiScheduled(env, ctx, day, hour, minute));
+
+        // Sunday 20:55: Weekly Summary (Geimeri)
         if (event.cron === "55 20 * * SUN") {
-            console.log(`[Scheduled] Sending weekly summary`);
             ctx.waitUntil(sendWeeklySummary(env));
         }
 
@@ -107,7 +123,6 @@ export default {
         // Countdown tracking logic
         ctx.waitUntil(updateCountdownStatus(env));
     },
-
 };
 
 async function updateCountdownStatus(env: Env) {
@@ -188,19 +203,12 @@ async function updateBotNickname(env: Env, nickname: string) {
     }
 }
 
-async function isValidRequestSignature(body: string, signature: string | null, timestamp: string | null, publicKey: string): Promise<boolean> {
-    if (!signature || !timestamp) return false;
-    return verifyKey(body, signature, timestamp, publicKey);
-}
-
 async function trackPlaytimes(env: Env) {
     const GUILD_ID = env.DISCORD_GUILD_ID;
     if (!GUILD_ID) {
         console.warn(`[Tracking] DISCORD_GUILD_ID is not set`);
         return;
     }
-
-    console.log(`[Tracking] Starting playtime tracking for guild: ${GUILD_ID}`);
 
     try {
         const response = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/widget.json`);
@@ -214,42 +222,33 @@ async function trackPlaytimes(env: Env) {
         const nowIso = now.toISOString();
 
         for (const member of members) {
-            if (!member.game?.name) {
-                continue;
-            }
+            if (!member.game?.name) continue;
+
             let username = normalizeUsername(`${member.username}#${member.discriminator}`);
             const gameName = member.game.name;
- 
-            // Resolve alias (e.g. k... -> kalle)
+
             username = await resolveAlias(username, env);
- 
-            // Check if user is known and get canonical name
             const knownName = await getKnownUser(username, env);
-            if (!knownName) {
-                continue;
-            }
+            if (!knownName) continue;
             username = knownName;
 
-            // Update or Insert session
-            // Logic: If there is a session for this user/game/week/year that was seen in the last 3 minutes, update it.
-            // Otherwise, start a new session.
             const lastSeenLimit = new Date(now.getTime() - 3 * 60000).toISOString();
 
             const existing = await env.DB.prepare(
                 `SELECT start_time FROM playtimes 
-                    WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND last_seen >= ?
-                    ORDER BY last_seen DESC LIMIT 1`
+                 WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND last_seen >= ?
+                 ORDER BY last_seen DESC LIMIT 1`
             ).bind(username, gameName, week, year, lastSeenLimit).first<{ start_time: string }>();
 
             if (existing) {
                 await env.DB.prepare(
                     `UPDATE playtimes SET last_seen = ?, total_minutes = total_minutes + 1 
-                        WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND start_time = ?`
+                     WHERE username = ? AND game_name = ? AND week = ? AND year = ? AND start_time = ?`
                 ).bind(nowIso, username, gameName, week, year, existing.start_time).run();
             } else {
                 await env.DB.prepare(
                     `INSERT INTO playtimes (username, game_name, start_time, last_seen, total_minutes, week, year)
-                        VALUES (?, ?, ?, ?, 1, ?, ?)`
+                     VALUES (?, ?, ?, ?, 1, ?, ?)`
                 ).bind(username, gameName, nowIso, nowIso, week, year).run();
             }
         }

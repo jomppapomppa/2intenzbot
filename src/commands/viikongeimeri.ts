@@ -1,7 +1,7 @@
 import { InteractionResponseType } from 'discord-interactions';
 import { getISOWeek, getYear, startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-fns';
 import { Command, Env } from '../types';
-import { formatDuration, isKnownUser, jsonResponse, normalizeUsername } from './utils';
+import { normalizeUsername, getKnownUser, resolveAlias, formatDuration, jsonResponse, isKnownUser } from '../utils';
 
 export interface WeeklyData {
     topGamers: { username: string; total: number }[];
@@ -46,7 +46,7 @@ export async function getWeeklyData(env: Env, week: number, year: number): Promi
     // 4. Play dates for streaks
     const usernames = topGamers.results.map(g => g.username);
     const placeholders = usernames.map(() => '?').join(',');
-    
+
     // Get end of week date
     let dateObj = setYear(new Date(), year);
     dateObj = setISOWeek(dateObj, week);
@@ -86,24 +86,24 @@ export async function getWeeklyStats(env: Env, week: number, year: number) {
         const dates = data.playDates
             .filter(d => d.username === user && d.game_name === game)
             .map(d => new Date(d.play_date).getTime());
-        
+
         if (dates.length === 0) return 0;
-        
+
         // Get end of week
         let dateObj = setYear(new Date(), data.year);
         dateObj = setISOWeek(dateObj, data.week);
         const weekEnd = endOfISOWeek(dateObj);
-        weekEnd.setHours(0,0,0,0);
+        weekEnd.setHours(0, 0, 0, 0);
         const weekEndTime = weekEnd.getTime();
         const weekStartTime = startOfISOWeek(dateObj).getTime();
 
         // Find latest play date that is within or before this week
         const latestInWeek = dates.find(d => d <= weekEndTime && d >= weekStartTime);
         if (!latestInWeek) return 0;
-        
+
         let streak = 1;
         let checkTime = latestInWeek;
-        
+
         while (true) {
             const dayBefore = checkTime - (24 * 60 * 60 * 1000);
             if (dates.includes(dayBefore)) {

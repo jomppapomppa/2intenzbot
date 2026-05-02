@@ -6,6 +6,8 @@ export interface Env {
     DISCORD_GUILD_ID: string;
     DISCORD_CHANNEL_ID: string;
     KV: KVNamespace;
+    PERJANTAIBIISI_CHANNEL_ID: string;
+    PERJANTAIBIISI_VOTE_URL: string;
 }
 
 export interface CommandOption {

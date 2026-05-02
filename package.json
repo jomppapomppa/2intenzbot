@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "tsx scripts/dev.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "register": "tsx register.ts",
-    "build:archive": "tsx scripts/build-archive.ts"
+    "build:archive": "tsx scripts/build-archive.ts",
+    "build:perjantaibiisi-archive": "tsx src/perjantaibiisi/script/build-archive.ts",
+    "build:perjantaibiisi-archive:local": "tsx src/perjantaibiisi/script/build-archive.ts --local"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +23,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "discord-interactions": "^4.4.0"
   }
 }
