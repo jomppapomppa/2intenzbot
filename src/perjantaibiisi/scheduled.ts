@@ -146,10 +146,21 @@ export async function handlePerjantaibiisiScheduled(env: Env, ctx: ExecutionCont
         day: now.getDay(),
         hour: now.getHours(),
         minute: now.getMinutes(),
+        week: getISOWeek(now),
+        year: getYear(now),
         dateStr: now.toISOString().split('T')[0]
     };
 
-    // Find next Friday for the invite text
+    // Perjantaibiisi Flow
+
+    // Monday 09:00: Activate weekend proposals
+    ctx.waitUntil(runScheduledTask(env, 'pb_activate_proposals', { day: Day.MONDAY, hour: 9, minute: 0 }, current, async () => {
+        await env.DB.prepare(
+            `UPDATE pb_songs SET is_next_week = 0 WHERE is_next_week = 1 AND week = ? AND year = ?`
+        ).bind(current.week, current.year).run();
+    }));
+
+    // Monday 09:00: Invite proposals
     const nextFriday = new Date(now);
     nextFriday.setDate(now.getDate() + (Day.FRIDAY - now.getDay() + 7) % 7);
     const fridayStr = formatZoned(nextFriday, 'd.M.');
