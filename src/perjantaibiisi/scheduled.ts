@@ -5,6 +5,7 @@ import {
     sendDiscordMessage,
     editDiscordMessage,
     sendDiscordReply,
+    addDiscordReaction,
     getYouTubeMetadata,
     parseYouTubeId
 } from '../utils';
@@ -57,7 +58,7 @@ export async function pollPerjantaibiisiChannel(env: Env) {
             ).bind(`%${youtubeId}%`, targetWeek, targetYear).first<{ proposer_name: string }>();
 
             if (existing) {
-                await sendDiscordReply(env, channelId, msg.id, `${existing.proposer_name} on ehdottanut jo samaa perjantaibiisiä. Ehdotustasi ei hyväksytä.`);
+                await addDiscordReaction(env, channelId, msg.id, '❌');
             } else {
                 const meta = await getYouTubeMetadata(songUrl);
                 const title = meta?.title || "Tuntematon kappale";
@@ -67,7 +68,7 @@ export async function pollPerjantaibiisiChannel(env: Env) {
                         VALUES (?, ?, ?, ?, ?, ?, ?)`
                 ).bind(songUrl, title, msg.author.username, msg.author.id, targetWeek, targetYear, (targetWeek > week ? 1 : 0)).run();
 
-                await sendDiscordReply(env, channelId, msg.id, "Ehdotuksesi perjantaibiisiksi on hyväksytty.");
+                await addDiscordReaction(env, channelId, msg.id, '✅');
             }
         }
 

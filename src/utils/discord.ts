@@ -63,6 +63,20 @@ export async function sendDiscordReply(env: Env, channelId: string, messageId: s
     }
 }
 
+export async function addDiscordReaction(env: Env, channelId: string, messageId: string, emoji: string) {
+    const encodedEmoji = encodeURIComponent(emoji);
+    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/@me`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bot ${env.DISCORD_TOKEN}` }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Discord API error (${response.status}): ${errorText}`);
+    }
+}
+
+
 import { verifyKey } from 'discord-interactions';
 
 export async function isValidRequestSignature(body: string, signature: string | null, timestamp: string | null, publicKey: string): Promise<boolean> {
