@@ -94,10 +94,7 @@ export default {
     },
 
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-        const nowZoned = toZonedTime(new Date(), 'Europe/Helsinki');
-        const day = nowZoned.getDay(); // 0 is Sunday, 5 is Friday
-        const hour = nowZoned.getHours();
-        const minute = nowZoned.getMinutes();
+        const nowZoned = toZonedTime(new Date(event.scheduledTime), 'Europe/Helsinki');
 
         console.log(`[Scheduled] Job started. Time (FI): ${formatZoned(nowZoned, 'yyyy-MM-dd HH:mm:ss')}`);
 
@@ -105,7 +102,7 @@ export default {
         ctx.waitUntil(trackPlaytimes(env));
 
         // Perjantaibiisi scheduling
-        ctx.waitUntil(handlePerjantaibiisiScheduled(env, ctx, day, hour, minute));
+        ctx.waitUntil(handlePerjantaibiisiScheduled(env, ctx, nowZoned));
 
         // Sunday 20:55: Weekly Summary (Geimeri)
         if (event.cron === "55 20 * * SUN") {

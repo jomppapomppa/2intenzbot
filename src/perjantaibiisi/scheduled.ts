@@ -1,13 +1,13 @@
 import { getISOWeek, getYear } from 'date-fns';
 import { toZonedTime, format as formatZoned } from 'date-fns-tz';
-import { Env } from '../types';
+import { Env, Day } from '../types';
 import {
     sendDiscordMessage,
     editDiscordMessage,
-    sendDiscordReply,
     addDiscordReaction,
     getYouTubeMetadata,
-    parseYouTubeId
+    parseYouTubeId,
+    runScheduledTask
 } from '../utils';
 
 export async function pollPerjantaibiisiChannel(env: Env) {
@@ -39,8 +39,8 @@ export async function pollPerjantaibiisiChannel(env: Env) {
         const day = now.getDay();
 
         // Proposals are accepted until Friday 11:00
-        const isVotingPeriod = (day === 5 && hour >= 11 && hour < 15);
-        const isAfterVotingFriday = (day === 5 && hour >= 15) || (day > 5);
+        const isVotingPeriod = (day === Day.FRIDAY && hour >= 11 && hour < 15);
+        const isAfterVotingFriday = (day === Day.FRIDAY && hour >= 15) || (day > Day.FRIDAY);
         // If it's Friday after 11:00, proposals go to NEXT week
         const targetWeek = (isVotingPeriod || isAfterVotingFriday) ? (week + 1) : week;
         const targetYear = (targetWeek > 52 && week === 52) ? year + 1 : year;
@@ -79,18 +79,7 @@ export async function pollPerjantaibiisiChannel(env: Env) {
     }
 }
 
-export async function sendPerjantaibiisiInvite(env: Env) {
-    const now = toZonedTime(new Date(), 'Europe/Helsinki');
-    // Find next Friday
-    let friday = new Date(now);
-    friday.setDate(now.getDate() + (5 - now.getDay() + 7) % 7);
-    const dateStr = formatZoned(friday, 'd.M.');
-
-    const content = `Ehdota omaa suosikkiasi perjantaibiisiksi lähettämällä YouTube-linkki kanavalle! Voit ehdottaa perjantaibiisiä pe ${dateStr} klo 10.59 asti.`;
-    await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, content);
-}
-
-export async function startPerjantaibiisiVoting(env: Env) {
+export async function startPerjantaibiisiVoting(env: Env, content: string, cancelledContent: string) {
     const now = toZonedTime(new Date(), 'Europe/Helsinki');
     const week = getISOWeek(now);
     const year = getYear(now);
@@ -100,18 +89,17 @@ export async function startPerjantaibiisiVoting(env: Env) {
     ).bind(week, year).first<{ count: number }>();
 
     if (!songs || songs.count < 2) {
-        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, "Tarpeeksi montaa ehdotusta ei saapunut, viikon äänestys on peruttu.");
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, cancelledContent);
         return;
     }
 
-    const content = "Äänestys alkaa! Äänestä komennon /perjantaibiisi ohjeilla! Äänestysaika päättyy klo 15:00.";
     const messageId = await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, content);
     if (messageId) {
         await env.KV.put('pb_voting_message_id', messageId);
     }
 }
 
-export async function endPerjantaibiisiVoting(env: Env) {
+export async function endPerjantaibiisiVoting(env: Env, statusContent: string, noVotesContent: string) {
     const now = toZonedTime(new Date(), 'Europe/Helsinki');
     const week = getISOWeek(now);
     const year = getYear(now);
@@ -119,7 +107,7 @@ export async function endPerjantaibiisiVoting(env: Env) {
     // Edit start message
     const startMsgId = await env.KV.get('pb_voting_message_id');
     if (startMsgId) {
-        await editDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, startMsgId, "Äänestysaika on päättynyt.");
+        await editDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, startMsgId, statusContent);
     }
 
     // Calculate winner
@@ -133,7 +121,7 @@ export async function endPerjantaibiisiVoting(env: Env) {
     `).bind(week, year).all<{ id: number, title: string, proposer_name: string, total_score: number }>();
 
     if (!results.results || results.results.length === 0) {
-        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, "Yhtään ääntä ei ole annettu, voittajaa ei voida julistaa.");
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, noVotesContent);
         return;
     }
 
@@ -150,26 +138,52 @@ export async function endPerjantaibiisiVoting(env: Env) {
     });
 }
 
-export async function handlePerjantaibiisiScheduled(env: Env, ctx: ExecutionContext, day: number, hour: number, minute: number) {
+export async function handlePerjantaibiisiScheduled(env: Env, ctx: ExecutionContext, now: Date) {
     // Every minute: Poll YouTube links
     ctx.waitUntil(pollPerjantaibiisiChannel(env));
 
-    // Perjantaibiisi Flow
-    if (day === 1 && hour === 9 && minute === 0) {
-        // Monday 09:00: Invite proposals
-        ctx.waitUntil(sendPerjantaibiisiInvite(env));
-    } else if (day === 5 && hour === 9 && minute === 0) {
-        // Friday 09:00: Deadline reminder
-        ctx.waitUntil(sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, "Äänestys lähestyy! Voit ehdottaa perjantaibiisiä klo 10.59 asti!"));
-    } else if (day === 5 && hour === 11 && minute === 0) {
-        // Friday 11:00: Start voting
-        ctx.waitUntil(startPerjantaibiisiVoting(env));
-    } else if (day === 5 && hour === 14 && minute === 45) {
-        // Friday 14:45: 15min left
-        ctx.waitUntil(sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, "Äänestysaikaa jäljellä 15min! Äänestä komennon /perjantaibiisi ohjeilla!"));
-    } else if (day === 5 && hour === 15 && minute === 0) {
-        // Friday 15:00: End voting and announce winner
-        ctx.waitUntil(endPerjantaibiisiVoting(env));
-    }
+    const current = {
+        day: now.getDay(),
+        hour: now.getHours(),
+        minute: now.getMinutes(),
+        dateStr: now.toISOString().split('T')[0]
+    };
+
+    // Find next Friday for the invite text
+    const nextFriday = new Date(now);
+    nextFriday.setDate(now.getDate() + (Day.FRIDAY - now.getDay() + 7) % 7);
+    const fridayStr = formatZoned(nextFriday, 'd.M.');
+
+    // Monday 09:00: Invite proposals
+    const inviteText = `Ehdota omaa suosikkiasi perjantaibiisiksi lähettämällä YouTube-linkki kanavalle! Voit ehdottaa perjantaibiisiä pe ${fridayStr} klo 10.59 asti.`;
+    ctx.waitUntil(runScheduledTask(env, 'pb_invite', { day: Day.MONDAY, hour: 9, minute: 0 }, current, async () => {
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, inviteText);
+    }));
+
+    // Friday 09:00: Deadline reminder
+    const deadlineText = "Äänestys lähestyy! Voit ehdottaa perjantaibiisiä klo 10.59 asti!";
+    ctx.waitUntil(runScheduledTask(env, 'pb_deadline_reminder', { day: Day.FRIDAY, hour: 9, minute: 0 }, current, async () => {
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, deadlineText);
+    }));
+
+    // Friday 11:00: Start voting
+    const votingStartText = "Äänestys alkaa! Äänestä komennon /perjantaibiisi ohjeilla! Äänestysaika päättyy klo 15:00.";
+    const votingCancelledText = "Tarpeeksi montaa ehdotusta ei saapunut, viikon äänestys on peruttu.";
+    ctx.waitUntil(runScheduledTask(env, 'pb_start_voting', { day: Day.FRIDAY, hour: 11, minute: 0 }, current, async () => {
+        await startPerjantaibiisiVoting(env, votingStartText, votingCancelledText);
+    }));
+
+    // Friday 14:45: 15min left
+    const votingReminderText = "Äänestysaikaa jäljellä 15min! Äänestä komennon /perjantaibiisi ohjeilla!";
+    ctx.waitUntil(runScheduledTask(env, 'pb_voting_reminder', { day: Day.FRIDAY, hour: 14, minute: 45 }, current, async () => {
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, votingReminderText);
+    }));
+
+    // Friday 15:00: End voting and announce winner
+    const votingEndStatusText = "Äänestysaika on päättynyt.";
+    const noVotesText = "Yhtään ääntä ei ole annettu, voittajaa ei julisteta.";
+    ctx.waitUntil(runScheduledTask(env, 'pb_end_voting', { day: Day.FRIDAY, hour: 15, minute: 0 }, current, async () => {
+        await endPerjantaibiisiVoting(env, votingEndStatusText, noVotesText);
+    }));
 }
 

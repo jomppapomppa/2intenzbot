@@ -29,3 +29,13 @@ export interface Command {
     execute: (interaction: any, env: Env) => Promise<Response>;
     handleComponent?: (interaction: any, env: Env) => Promise<Response>;
 }
+
+export enum Day {
+    SUNDAY = 0,
+    MONDAY = 1,
+    TUESDAY = 2,
+    WEDNESDAY = 3,
+    THURSDAY = 4,
+    FRIDAY = 5,
+    SATURDAY = 6,
+}
