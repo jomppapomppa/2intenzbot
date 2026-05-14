@@ -111,25 +111,34 @@ export async function endPerjantaibiisiVoting(env: Env, statusContent: string, n
     }
 
     // Calculate winner
+    const songCountResult = await env.DB.prepare(
+        `SELECT COUNT(*) as count FROM pb_songs WHERE week = ? AND year = ? AND is_next_week = 0`
+    ).bind(week, year).first<{ count: number }>();
+    const songCount = songCountResult?.count || 0;
+
     const results = await env.DB.prepare(`
-        SELECT s.id, s.title, s.proposer_name, SUM(v.score) as total_score
+        SELECT s.id, s.title, s.proposer_name, SUM(v.score) as rel_score, COUNT(v.voter_id) as vote_count
         FROM pb_songs s
         JOIN pb_votes v ON s.id = v.song_id
         WHERE s.week = ? AND s.year = ? AND s.is_next_week = 0
         GROUP BY s.id
-        ORDER BY total_score ASC
-    `).bind(week, year).all<{ id: number, title: string, proposer_name: string, total_score: number }>();
+    `).bind(week, year).all<{ id: number, title: string, proposer_name: string, rel_score: number, vote_count: number }>();
 
     if (!results.results || results.results.length === 0) {
         await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, noVotesContent);
         return;
     }
 
-    const winner = results.results[0];
+    const resolvedResults = results.results.map(r => ({
+        ...r,
+        total_score: (r.vote_count * songCount) - r.rel_score
+    })).sort((a, b) => b.total_score - a.total_score);
+
+    const winner = resolvedResults[0];
     const embed = {
         title: `🏆 Perjantaibiisi: ${winner.title}`,
         description: `Ehdottaja: **${winner.proposer_name}**\nPistemäärä: **${winner.total_score}**\n\n**Tulokset:**\n` +
-            results.results.map(r => `${r.title} (${r.proposer_name}): ${r.total_score} pistettä`).join('\n'),
+            resolvedResults.map(r => `${r.title} (${r.proposer_name}): ${r.total_score} pistettä`).join('\n'),
         color: 0xffd700
     };
 
