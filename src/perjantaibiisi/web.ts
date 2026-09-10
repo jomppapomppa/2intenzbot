@@ -83,12 +83,9 @@ export function renderVotingPage(songs: any[], user: { username: string, userId:
         </div>
     `).join('');
 
-    const voteButtonsHtml = `
-        <button class="vote-btn" data-score="0">-</button>
-        ${songs.map((_, i) => `
-            <button class="vote-btn" data-score="${i + 1}">${i + 1}</button>
-        `).join('')}
-    `;
+    const voteButtonsHtml = songs.map((_, i) => `
+        <button class="vote-btn" data-score="${i + 1}">${i + 1}</button>
+    `).join('');
 
     const votingControlsHtml = songs.map((song) => `
         <div class="vote-row" data-song-id="${song.id}">

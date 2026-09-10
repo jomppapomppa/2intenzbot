@@ -3,12 +3,14 @@ import { toZonedTime, format as formatZoned } from 'date-fns-tz';
 import { Env, Day } from '../types';
 import {
     sendDiscordMessage,
+    sendDiscordDM,
     editDiscordMessage,
     addDiscordReaction,
     getYouTubeMetadata,
     parseYouTubeId,
     runScheduledTask
 } from '../utils';
+import { createVotingLink } from './utils';
 
 export async function pollPerjantaibiisiChannel(env: Env) {
     const channelId = env.PERJANTAIBIISI_CHANNEL_ID;
@@ -96,6 +98,23 @@ export async function startPerjantaibiisiVoting(env: Env, content: string, cance
     const messageId = await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, content);
     if (messageId) {
         await env.KV.put('pb_voting_message_id', messageId);
+    }
+
+    // Send voting link DMs to users who have submitted songs for this week
+    const proposers = await env.DB.prepare(
+        `SELECT DISTINCT proposer_id, proposer_name FROM pb_songs WHERE week = ? AND year = ? AND is_next_week = 0 AND proposer_id IS NOT NULL AND proposer_id != ''`
+    ).bind(week, year).all<{ proposer_id: string, proposer_name: string }>();
+
+    if (proposers.results && proposers.results.length > 0) {
+        for (const proposer of proposers.results) {
+            try {
+                const voteUrl = await createVotingLink(env, proposer.proposer_id, proposer.proposer_name);
+                const dmMessage = `Perjantaibiisin äänestys on alkanut! Tässä on henkilökohtainen äänestyslinkkisi: ${voteUrl}\n\nÄänestyssivulla voit antaa pisteitä ehdotetuille kappaleille. Voit muokata ääniäsi äänestysajan päättymiseen asti.`;
+                await sendDiscordDM(env, proposer.proposer_id, dmMessage);
+            } catch (err) {
+                console.error(`Failed to send voting link DM to ${proposer.proposer_name} (${proposer.proposer_id}):`, err);
+            }
+        }
     }
 }
 

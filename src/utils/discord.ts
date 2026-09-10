@@ -35,6 +35,20 @@ export async function sendDiscordMessage(env: Env, channelId: string, options: S
     throw new Error(`Discord API error (${response.status}): ${errorText}`);
 }
 
+export async function sendDiscordDM(env: Env, userId: string, options: SendMessageOptions | string): Promise<string | null> {
+    const response = await fetch(`https://discord.com/api/v10/users/@me/channels`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bot ${env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_id: userId })
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Discord API DM error (${response.status}): ${errorText}`);
+    }
+    const channel: any = await response.json();
+    return sendDiscordMessage(env, channel.id, options);
+}
+
 export async function editDiscordMessage(env: Env, channelId: string, messageId: string, options: SendMessageOptions | string) {
     const payload = buildPayload(options);
 
