@@ -3,6 +3,7 @@ import { Env } from '../types';
 export interface SendMessageOptions {
     content?: string;
     embeds?: any[];
+    components?: any[];
 }
 
 function buildPayload(options: SendMessageOptions | string, extra: any = {}): any {
@@ -12,6 +13,7 @@ function buildPayload(options: SendMessageOptions | string, extra: any = {}): an
     } else {
         if (options.content) payload.content = options.content;
         if (options.embeds) payload.embeds = options.embeds;
+        if (options.components) payload.components = options.components;
     }
     return payload;
 }

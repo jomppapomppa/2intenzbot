@@ -1,6 +1,6 @@
 import { Env } from '../types';
 import { sendDiscordMessage, editDiscordMessage } from '../utils/discord';
-import { LiigaState, fetchLiigaGames, formatDiscordEmbed } from './logic';
+import { LiigaState, fetchLiigaGames, formatDiscordEmbed, syncMatchesToDb, getDailyBets } from './logic';
 
 // In-memory cache to reduce KV read operations
 let memoryStates: Record<string, LiigaState> = {};
@@ -52,18 +52,23 @@ export async function updateLiigaScores(env: Env) {
         return;
     }
 
-    // Calculate notification start time (15 min before the earliest game)
+    // Sync matches to DB
+    await syncMatchesToDb(env, gamesData, dateStr);
+
+    // Calculate start times
     const startTimes = gamesData.map(g => new Date(g.start).getTime());
     const earliestStart = Math.min(...startTimes);
-    const notificationStartTime = new Date(earliestStart - 15 * 60 * 1000);
+    // Notification starts 1h before first game when betting opens
+    const notificationStartTime = new Date(earliestStart - 60 * 60 * 1000);
+    const bettingEndTime = new Date(earliestStart - 1 * 60 * 1000);
+
+    const isBettingOpen = now >= notificationStartTime && now < bettingEndTime;
 
     // Check if we should be polling
     const anyActive = gamesData.some(g => g.started && !g.ended);
     const shouldStartNotify = now >= notificationStartTime && !state?.messageId;
 
     if (!anyActive && !shouldStartNotify && state?.messageId && state.lastActiveUpdateDone) {
-        // All games ended and we already did the final update, or not yet time to notify
-        // Update state to ensure we store nextNotificationTime if needed
         if (state) {
             state.nextNotificationTime = notificationStartTime.toISOString();
             await env.KV.put(kvKey, JSON.stringify(state));
@@ -79,12 +84,28 @@ export async function updateLiigaScores(env: Env) {
         };
     }
 
-    const embedData = formatDiscordEmbed(gamesData);
+    const betsData = await getDailyBets(env, dateStr);
+    const embedData = formatDiscordEmbed(gamesData, betsData);
+
+    const components = [
+        {
+            type: 1, // ACTION_ROW
+            components: [
+                {
+                    type: 2, // BUTTON
+                    style: 1, // PRIMARY
+                    label: 'Betsaa',
+                    custom_id: 'liiga:bet',
+                    disabled: !isBettingOpen
+                }
+            ]
+        }
+    ];
 
     if (!state.messageId && shouldStartNotify) {
         // Send new message
         try {
-            const messageId = await sendDiscordMessage(env, env.DISCORD_CHANNEL_ID, { embeds: [embedData] });
+            const messageId = await sendDiscordMessage(env, env.DISCORD_CHANNEL_ID, { embeds: [embedData], components });
             if (messageId) {
                 console.log(`[Liiga] Sent new message: ${messageId}`);
                 state.messageId = messageId;
@@ -93,11 +114,9 @@ export async function updateLiigaScores(env: Env) {
             console.error('[Liiga] Failed to send new message', e);
         }
     } else if (state.messageId) {
-        // Update existing message if content changed or score changed
-        // For simplicity, we update if any game is active or if it's the first time
         console.log(`[Liiga] Updating existing message: ${state.messageId}`);
         try {
-            await editDiscordMessage(env, env.DISCORD_CHANNEL_ID, state.messageId, { embeds: [embedData] });
+            await editDiscordMessage(env, env.DISCORD_CHANNEL_ID, state.messageId, { embeds: [embedData], components });
         } catch (e) {
             console.error('[Liiga] Failed to update message', e);
         }
@@ -113,7 +132,6 @@ export async function updateLiigaScores(env: Env) {
     state.lastChecked = now.toISOString();
     state.nextNotificationTime = notificationStartTime.toISOString();
 
-    // Track if we've done the final update after games ended
     if (anyActive) {
         state.lastActiveUpdateDone = false;
     } else if (state.messageId) {
@@ -127,10 +145,8 @@ export async function updateLiigaScores(env: Env) {
         prevState.lastActiveUpdateDone !== state.lastActiveUpdateDone ||
         JSON.stringify(prevState.games) !== JSON.stringify(state.games);
 
-    // Update memory cache always
     memoryStates[kvKey] = state;
 
-    // Only update KV if something meaningful changed to save writes
     if (stateChanged) {
         console.log(`[Liiga] State changed, updating KV`);
         await env.KV.put(kvKey, JSON.stringify(state));
@@ -138,3 +154,4 @@ export async function updateLiigaScores(env: Env) {
         console.log(`[Liiga] No changes, skipping KV update`);
     }
 }
+

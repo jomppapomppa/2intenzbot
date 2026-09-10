@@ -16,6 +16,8 @@ import {
 } from './viikongeimeri';
 
 import { updateCountdownStatus } from './countdown';
+import { handleLiigaComponent, handleLiigaModalSubmit } from './liiga/interaction';
+
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const webResponse = await handleVotingWebRequest(request, env);
@@ -66,9 +68,13 @@ export default {
 
             if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
                 const customId = interaction.data.custom_id;
-                const commandName = customId.split(':')[0];
-                console.log(`[Interaction] Component received for command: ${commandName}`);
+                console.log(`[Interaction] Component received custom_id: ${customId}`);
 
+                if (customId.startsWith('liiga:')) {
+                    return await handleLiigaComponent(interaction, env);
+                }
+
+                const commandName = customId.split(':')[0];
                 const command = COMMANDS[commandName];
                 if (command && command.handleComponent) {
                     try {
@@ -86,6 +92,15 @@ export default {
                         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                         data: { content: 'Virhe: Komentoa ei löytynyt komponentille.', flags: 64 }
                     }), { headers: { 'Content-Type': 'application/json' } });
+                }
+            }
+
+            if (interaction.type === InteractionType.MODAL_SUBMIT || interaction.type === 5) {
+                const customId = interaction.data.custom_id;
+                console.log(`[Interaction] Modal submit received custom_id: ${customId}`);
+
+                if (customId.startsWith('liiga:')) {
+                    return await handleLiigaModalSubmit(interaction, env);
                 }
             }
         }
