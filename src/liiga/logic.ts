@@ -1,4 +1,10 @@
+import { toZonedTime, format as formatZoned } from 'date-fns-tz';
 import { Env } from '../types';
+
+export function getHelsinkiDateStr(date: Date = new Date()): string {
+    const zoned = toZonedTime(date, 'Europe/Helsinki');
+    return formatZoned(zoned, 'yyyy-MM-dd');
+}
 
 export interface LiigaGame {
     id: number;
@@ -101,6 +107,16 @@ export async function getOngoingTournament(env: Env) {
 }
 
 export async function fetchLiigaGames(env: Env, date: string): Promise<LiigaGame[]> {
+    const kvKey = `liiga_games_${date}`;
+    try {
+        const cached = await env.KV.get<LiigaGame[]>(kvKey, { type: 'json' });
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+            return cached;
+        }
+    } catch (e) {
+        console.error('[Liiga] KV games read error:', e);
+    }
+
     try {
         const tournamentInfo = await getOngoingTournament(env);
         if (!tournamentInfo) {
@@ -113,7 +129,11 @@ export async function fetchLiigaGames(env: Env, date: string): Promise<LiigaGame
         const response = await fetch(url);
         if (!response.ok) return [];
         const data: any = await response.json();
-        return data.games || [];
+        const games = data.games || [];
+        if (games.length > 0) {
+            await env.KV.put(kvKey, JSON.stringify(games), { expirationTtl: 300 });
+        }
+        return games;
     } catch (err) {
         console.error('[Liiga] Error fetching Liiga games:', err);
         return [];

@@ -1,14 +1,13 @@
 import { Env } from '../types';
 import { sendDiscordMessage, editDiscordMessage } from '../utils/discord';
-import { LiigaState, fetchLiigaGames, formatDiscordEmbed, syncMatchesToDb, getDailyBets } from './logic';
+import { LiigaState, fetchLiigaGames, formatDiscordEmbed, syncMatchesToDb, getDailyBets, getHelsinkiDateStr } from './logic';
 
 // In-memory cache to reduce KV read operations
 let memoryStates: Record<string, LiigaState> = {};
 
 export async function updateLiigaScores(env: Env) {
     const now = new Date();
-    // Use Finland time (UTC+2)
-    const dateStr = now.toISOString().split('T')[0];
+    const dateStr = getHelsinkiDateStr(now);
 
     const kvKey = `liiga_state_${dateStr}`;
     console.log(`[Liiga] Updating scores for: ${dateStr}`);

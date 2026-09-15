@@ -1,13 +1,13 @@
 import { InteractionResponseType } from 'discord-interactions';
 import { Env } from '../types';
 import { jsonResponse } from '../utils';
-import { fetchLiigaGames, getDailyBets, saveUserBets, deleteUserBets, formatDiscordEmbed, LiigaGame } from './logic';
+import { fetchLiigaGames, getDailyBets, saveUserBets, deleteUserBets, formatDiscordEmbed, LiigaGame, getHelsinkiDateStr } from './logic';
 import { editDiscordMessage } from '../utils/discord';
 
 export async function handleLiigaComponent(interaction: any, env: Env): Promise<Response> {
     const customId = interaction.data.custom_id;
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+    const dateStr = getHelsinkiDateStr(now);
     const userId = interaction.member?.user?.id || interaction.user?.id;
 
     if (customId === 'liiga:bet' || customId.startsWith('liiga:bet_page:')) {
@@ -124,7 +124,7 @@ export async function handleLiigaComponent(interaction: any, env: Env): Promise<
 export async function handleLiigaModalSubmit(interaction: any, env: Env): Promise<Response> {
     try {
         const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
+        const dateStr = getHelsinkiDateStr(now);
         const userId = interaction.member?.user?.id || interaction.user?.id;
         const userName = interaction.member?.user?.username || interaction.user?.username || 'Tuntematon';
 

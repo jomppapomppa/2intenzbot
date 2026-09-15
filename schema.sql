@@ -30,3 +30,31 @@ CREATE TABLE IF NOT EXISTS pb_votes (
     year INTEGER NOT NULL,
     PRIMARY KEY (song_id, voter_id)
 );
+
+CREATE TABLE IF NOT EXISTS liiga_matches (
+    id INTEGER PRIMARY KEY,
+    date TEXT NOT NULL,
+    home TEXT NOT NULL,
+    away TEXT NOT NULL,
+    home_goals INTEGER DEFAULT 0,
+    away_goals INTEGER DEFAULT 0,
+    home_goals_60 INTEGER DEFAULT 0,
+    away_goals_60 INTEGER DEFAULT 0,
+    bet_result TEXT,
+    game_time INTEGER DEFAULT 0,
+    status TEXT,
+    start_time TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS liiga_bets (
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    game_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    prediction TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, game_id, date)
+);
+
