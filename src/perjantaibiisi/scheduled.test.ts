@@ -1,8 +1,58 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { startPerjantaibiisiVoting, pollPerjantaibiisiChannel } from './scheduled';
+import { startPerjantaibiisiVoting, pollPerjantaibiisiChannel, compareSongs, SongStat } from './scheduled';
 import { getISOWeek, getYear } from 'date-fns';
 
 globalThis.fetch = vi.fn();
+
+describe('compareSongs tie-breaking logic', () => {
+    it('sorts higher total_score first', () => {
+        const songA: SongStat = {
+            id: 1, title: 'Song A', proposer_name: 'User A', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 10, pointCounts: { 4: 2, 2: 1 }, earliestVoteTime: '2026-09-01T12:10:00Z', voteCount: 3
+        };
+        const songB: SongStat = {
+            id: 2, title: 'Song B', proposer_name: 'User B', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 12, pointCounts: { 4: 3 }, earliestVoteTime: '2026-09-01T12:15:00Z', voteCount: 3
+        };
+
+        const sorted = [songA, songB].sort((a, b) => compareSongs(a, b, 4));
+        expect(sorted[0].id).toBe(2);
+    });
+
+    it('breaks ties using highest individual point breakdown (1st place votes, then 2nd, etc.)', () => {
+        // Both have 10 total points
+        // Song A has two 4-pt votes and one 2-pt vote
+        // Song B has one 4-pt vote and two 3-pt votes
+        const songA: SongStat = {
+            id: 1, title: 'Song A', proposer_name: 'User A', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 10, pointCounts: { 4: 2, 2: 1 }, earliestVoteTime: '2026-09-01T12:10:00Z', voteCount: 3
+        };
+        const songB: SongStat = {
+            id: 2, title: 'Song B', proposer_name: 'User B', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 10, pointCounts: { 4: 1, 3: 2 }, earliestVoteTime: '2026-09-01T12:05:00Z', voteCount: 3
+        };
+
+        const sorted = [songB, songA].sort((a, b) => compareSongs(a, b, 4));
+        // Song A has two 4-pt votes vs Song B's one 4-pt vote -> Song A wins
+        expect(sorted[0].id).toBe(1);
+    });
+
+    it('breaks ties using earlier vote timestamp when point breakdowns are identical', () => {
+        // Both have identical total score (10) and identical point counts
+        const songA: SongStat = {
+            id: 1, title: 'Song A', proposer_name: 'User A', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 10, pointCounts: { 4: 1, 3: 2 }, earliestVoteTime: '2026-09-01T12:10:00Z', voteCount: 3
+        };
+        const songB: SongStat = {
+            id: 2, title: 'Song B', proposer_name: 'User B', createdAt: '2026-09-01T12:00:00Z',
+            total_score: 10, pointCounts: { 4: 1, 3: 2 }, earliestVoteTime: '2026-09-01T12:05:00Z', voteCount: 3
+        };
+
+        const sorted = [songA, songB].sort((a, b) => compareSongs(a, b, 4));
+        // Song B received its vote earlier (12:05 vs 12:10) -> Song B wins
+        expect(sorted[0].id).toBe(2);
+    });
+});
 
 describe('startPerjantaibiisiVoting', () => {
     beforeEach(() => {

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS pb_votes (
     score INTEGER NOT NULL,
     week INTEGER NOT NULL,
     year INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (song_id, voter_id)
 );
 

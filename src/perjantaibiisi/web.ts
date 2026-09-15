@@ -59,8 +59,8 @@ export async function handleVotingWebRequest(request: Request, env: Env): Promis
             }
 
             await env.DB.prepare(
-                `INSERT OR REPLACE INTO pb_votes (song_id, voter_id, voter_name, score, week, year)
-                 VALUES (?, ?, ?, ?, ?, ?)`
+                `INSERT OR REPLACE INTO pb_votes (song_id, voter_id, voter_name, score, week, year, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
             ).bind(songId, tokenData.userId, tokenData.username, relativeScore, week, year).run();
         }
 

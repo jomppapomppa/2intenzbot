@@ -118,6 +118,47 @@ export async function startPerjantaibiisiVoting(env: Env, content: string, cance
     }
 }
 
+export interface SongStat {
+    id: number;
+    title: string;
+    proposer_name: string;
+    createdAt: string;
+    total_score: number;
+    pointCounts: Record<number, number>;
+    earliestVoteTime: string | null;
+    voteCount: number;
+}
+
+export function compareSongs(a: SongStat, b: SongStat, songCount: number): number {
+    // 1. Primary: Total score (descending)
+    if (b.total_score !== a.total_score) {
+        return b.total_score - a.total_score;
+    }
+
+    // 2. Tie-breaker 1: Breakdown of max points down to 1 point
+    for (let pts = songCount; pts >= 1; pts--) {
+        const countA = a.pointCounts[pts] || 0;
+        const countB = b.pointCounts[pts] || 0;
+        if (countB !== countA) {
+            return countB - countA;
+        }
+    }
+
+    // 3. Tie-breaker 2: Earlier vote date (earlier date/timestamp wins)
+    const timeA = a.earliestVoteTime
+        ? new Date(a.earliestVoteTime).getTime()
+        : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const timeB = b.earliestVoteTime
+        ? new Date(b.earliestVoteTime).getTime()
+        : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+
+    if (timeA !== timeB) {
+        return timeA - timeB;
+    }
+
+    return 0;
+}
+
 export async function endPerjantaibiisiVoting(env: Env, statusContent: string, noVotesContent: string) {
     const now = toZonedTime(new Date(), 'Europe/Helsinki');
     const week = getISOWeek(now);
@@ -133,29 +174,71 @@ export async function endPerjantaibiisiVoting(env: Env, statusContent: string, n
         console.error('Failed to edit voting start message:', err);
     }
 
-    // Calculate winner
-    const songCountResult = await env.DB.prepare(
-        `SELECT COUNT(*) as count FROM pb_songs WHERE week = ? AND year = ? AND is_next_week = 0`
-    ).bind(week, year).first<{ count: number }>();
-    const songCount = songCountResult?.count || 0;
+    // Get all songs for this week
+    const songsRes = await env.DB.prepare(
+        `SELECT id, title, proposer_name, created_at FROM pb_songs WHERE week = ? AND year = ? AND is_next_week = 0`
+    ).bind(week, year).all<{ id: number; title: string; proposer_name: string; created_at: string }>();
 
-    const results = await env.DB.prepare(`
-        SELECT s.id, s.title, s.proposer_name, SUM(v.score) as rel_score, COUNT(v.voter_id) as vote_count
-        FROM pb_songs s
-        JOIN pb_votes v ON s.id = v.song_id
-        WHERE s.week = ? AND s.year = ? AND s.is_next_week = 0
-        GROUP BY s.id
-    `).bind(week, year).all<{ id: number, title: string, proposer_name: string, rel_score: number, vote_count: number }>();
-
-    if (!results.results || results.results.length === 0) {
+    const songs = songsRes.results || [];
+    if (songs.length === 0) {
         await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, noVotesContent);
         return;
     }
 
-    const resolvedResults = results.results.map(r => ({
-        ...r,
-        total_score: (r.vote_count * songCount) - r.rel_score
-    })).sort((a, b) => b.total_score - a.total_score);
+    const songCount = songs.length;
+
+    // Get all votes for this week
+    const votesRes = await env.DB.prepare(`
+        SELECT v.song_id, v.score, v.created_at
+        FROM pb_votes v
+        JOIN pb_songs s ON s.id = v.song_id
+        WHERE s.week = ? AND s.year = ? AND s.is_next_week = 0
+    `).bind(week, year).all<{ song_id: number; score: number; created_at?: string }>();
+
+    const votes = votesRes.results || [];
+    if (votes.length === 0) {
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, noVotesContent);
+        return;
+    }
+
+    const songStats = new Map<number, SongStat>();
+    for (const song of songs) {
+        songStats.set(song.id, {
+            id: song.id,
+            title: song.title,
+            proposer_name: song.proposer_name,
+            createdAt: song.created_at,
+            total_score: 0,
+            pointCounts: {},
+            earliestVoteTime: null,
+            voteCount: 0
+        });
+    }
+
+    for (const v of votes) {
+        const stat = songStats.get(v.song_id);
+        if (stat) {
+            stat.voteCount++;
+            const pts = songCount - v.score;
+            stat.total_score += pts;
+            stat.pointCounts[pts] = (stat.pointCounts[pts] || 0) + 1;
+
+            if (v.created_at) {
+                if (!stat.earliestVoteTime || new Date(v.created_at).getTime() < new Date(stat.earliestVoteTime).getTime()) {
+                    stat.earliestVoteTime = v.created_at;
+                }
+            }
+        }
+    }
+
+    const resolvedResults = Array.from(songStats.values())
+        .filter(s => s.voteCount > 0)
+        .sort((a, b) => compareSongs(a, b, songCount));
+
+    if (resolvedResults.length === 0) {
+        await sendDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, noVotesContent);
+        return;
+    }
 
     const winner = resolvedResults[0];
     const embed = {
