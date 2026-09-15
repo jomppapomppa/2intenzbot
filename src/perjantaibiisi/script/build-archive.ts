@@ -6,6 +6,7 @@ import { startOfISOWeek, endOfISOWeek, setISOWeek, setYear, format } from 'date-
 import { fi } from 'date-fns/locale';
 import { escapeHtml } from '../../utils/format';
 import { BASE_TEMPLATE } from '../template';
+import { compareSongs } from '../scheduled';
 
 // Configuration
 const DB_NAME = "2intenzbot";
@@ -45,6 +46,51 @@ function getWeekInfo(week: number, year: number) {
     };
 }
 
+function getRankedSongsForWeek(week: number, year: number) {
+    const songs = queryD1(`SELECT * FROM pb_songs WHERE week = ${week} AND year = ${year} AND is_next_week = 0`);
+    if (songs.length === 0) {
+        return { results: [], songCount: 0, voters: [], allVotes: [] };
+    }
+
+    const songCount = songs.length;
+    const voters = queryD1(`SELECT DISTINCT voter_name FROM pb_votes WHERE week = ${week} AND year = ${year} ORDER BY voter_name`);
+    const allVotes = queryD1(`SELECT song_id, voter_name, score, created_at FROM pb_votes WHERE week = ${week} AND year = ${year}`);
+
+    const songStats = new Map<number, any>();
+    for (const song of songs) {
+        songStats.set(song.id, {
+            ...song,
+            createdAt: song.created_at,
+            total_score: 0,
+            pointCounts: {},
+            earliestVoteTime: null,
+            voteCount: 0
+        });
+    }
+
+    for (const v of allVotes) {
+        const stat = songStats.get(v.song_id);
+        if (stat) {
+            stat.voteCount++;
+            const pts = songCount - v.score;
+            stat.total_score += pts;
+            stat.pointCounts[pts] = (stat.pointCounts[pts] || 0) + 1;
+
+            if (v.created_at) {
+                if (!stat.earliestVoteTime || new Date(v.created_at).getTime() < new Date(stat.earliestVoteTime).getTime()) {
+                    stat.earliestVoteTime = v.created_at;
+                }
+            }
+        }
+    }
+
+    const results = Array.from(songStats.values())
+        .filter(s => s.voteCount > 0)
+        .sort((a, b) => compareSongs(a, b, songCount));
+
+    return { results, songCount, voters, allVotes };
+}
+
 
 async function main() {
     console.log("🚀 Building Perjantaibiisi Archive...");
@@ -57,25 +103,16 @@ async function main() {
         const yearDir = path.join(OUTPUT_DIR, year.toString());
         if (!fs.existsSync(yearDir)) fs.mkdirSync(yearDir, { recursive: true });
 
+        const weekFilePath = path.join(yearDir, `${week}.html`);
+        if (fs.existsSync(weekFilePath)) {
+            console.log(`[Skip] ${year}/${week}.html already exists`);
+            continue;
+        }
+
         const weekInfo = getWeekInfo(week, year);
-
-        const songCountResult = queryD1(`SELECT COUNT(*) as count FROM pb_songs WHERE week = ${week} AND year = ${year} AND is_next_week = 0`);
-        const songCount = songCountResult[0]?.count || 0;
-
-        const results = queryD1(`
-            SELECT s.*, SUM(${songCount} - v.score) as total_score
-            FROM pb_songs s
-            JOIN pb_votes v ON s.id = v.song_id
-            WHERE s.week = ${week} AND s.year = ${year} AND s.is_next_week = 0
-            GROUP BY s.id
-            ORDER BY total_score DESC
-        `);
+        const { results, songCount, voters, allVotes } = getRankedSongsForWeek(week, year);
 
         if (results.length === 0) continue;
-
-        // Fetch individual votes for the summary table
-        const voters = queryD1(`SELECT DISTINCT voter_name FROM pb_votes WHERE week = ${week} AND year = ${year} ORDER BY voter_name`);
-        const allVotes = queryD1(`SELECT song_id, voter_name, score FROM pb_votes WHERE week = ${week} AND year = ${year}`);
 
         let tableHtml = `
             <div class="summary-section">
@@ -148,18 +185,8 @@ async function main() {
         indexContent += `<h2>${year}</h2><div class="grid">`;
         for (const w of yearWeeks) {
             const weekInfo = getWeekInfo(w.week, w.year);
-            const songCountResult = queryD1(`SELECT COUNT(*) as count FROM pb_songs WHERE week = ${w.week} AND year = ${w.year} AND is_next_week = 0`);
-            const songCount = songCountResult[0]?.count || 0;
-
-            const winner = queryD1(`
-                SELECT s.title, s.proposer_name, SUM(${songCount} - v.score) as total_score
-                FROM pb_songs s
-                JOIN pb_votes v ON s.id = v.song_id
-                WHERE s.week = ${w.week} AND s.year = ${w.year} AND s.is_next_week = 0
-                GROUP BY s.id
-                ORDER BY total_score DESC
-                LIMIT 1
-            `)[0];
+            const { results } = getRankedSongsForWeek(w.week, w.year);
+            const winner = results[0];
 
             if (!winner) continue;
 
