@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { startPerjantaibiisiVoting } from './scheduled';
+import { startPerjantaibiisiVoting, pollPerjantaibiisiChannel } from './scheduled';
+import { getISOWeek, getYear } from 'date-fns';
 
 globalThis.fetch = vi.fn();
 
@@ -84,5 +85,87 @@ describe('startPerjantaibiisiVoting', () => {
                 body: JSON.stringify({ recipient_id: 'user2' })
             })
         );
+    });
+});
+
+describe('pollPerjantaibiisiChannel', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+    });
+
+    it('assigns Sunday proposals to next week (targetWeek = week + 1, is_next_week = 1)', async () => {
+        // Set system time to Sunday 06/09/2026 22:46 Finnish time (19:46 UTC)
+        const mockSunday = new Date('2026-09-06T19:46:00Z');
+        vi.useFakeTimers();
+        vi.setSystemTime(mockSunday);
+
+        const currentIsoWeek = getISOWeek(mockSunday);
+        const currentYear = getYear(mockSunday);
+
+        let insertedRow: any = null;
+
+        const mockEnv: any = {
+            PERJANTAIBIISI_CHANNEL_ID: 'channel-123',
+            DISCORD_TOKEN: 'test-token',
+            KV: {
+                get: vi.fn(async () => null),
+                put: vi.fn(async () => {}),
+            },
+            DB: {
+                prepare: vi.fn((query: string) => {
+                    if (query.includes('SELECT proposer_name')) {
+                        return { bind: () => ({ first: async () => null }) };
+                    }
+                    if (query.includes('INSERT INTO pb_songs')) {
+                        return {
+                            bind: (...args: any[]) => ({
+                                run: async () => {
+                                    insertedRow = {
+                                        url: args[0],
+                                        title: args[1],
+                                        proposer_name: args[2],
+                                        proposer_id: args[3],
+                                        week: args[4],
+                                        year: args[5],
+                                        is_next_week: args[6],
+                                    };
+                                }
+                            })
+                        };
+                    }
+                    return { bind: () => ({ first: async () => null, run: async () => {} }) };
+                })
+            }
+        };
+
+        const mockMessages = [
+            {
+                id: '10001',
+                content: 'https://youtu.be/CDjrkyU-Rw4',
+                author: { id: 'user-onanoya', username: 'ONANOYA' }
+            }
+        ];
+
+        globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+            if (url.includes('/messages')) {
+                return new Response(JSON.stringify(mockMessages), { status: 200 });
+            }
+            if (url.includes('youtube.com/oembed')) {
+                return new Response(JSON.stringify({ title: 'Test Song Title' }), { status: 200 });
+            }
+            if (url.includes('/reactions/')) {
+                return new Response(null, { status: 204 });
+            }
+            return new Response('Not found', { status: 404 });
+        });
+
+        await pollPerjantaibiisiChannel(mockEnv);
+
+        expect(insertedRow).not.toBeNull();
+        expect(insertedRow.week).toBe(currentIsoWeek + 1);
+        expect(insertedRow.is_next_week).toBe(1);
+
+        vi.useRealTimers();
     });
 });

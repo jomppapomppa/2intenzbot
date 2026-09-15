@@ -42,7 +42,7 @@ export async function pollPerjantaibiisiChannel(env: Env) {
 
         // Proposals are accepted until Friday 11:00
         const isVotingPeriod = (day === Day.FRIDAY && hour >= 11 && hour < 15);
-        const isAfterVotingFriday = (day === Day.FRIDAY && hour >= 15) || (day > Day.FRIDAY);
+        const isAfterVotingFriday = (day === Day.FRIDAY && hour >= 15) || day === Day.SATURDAY || day === Day.SUNDAY;
         // If it's Friday after 11:00, proposals go to NEXT week
         const targetWeek = (isVotingPeriod || isAfterVotingFriday) ? (week + 1) : week;
         const targetYear = (targetWeek > 52 && week === 52) ? year + 1 : year;
@@ -124,9 +124,13 @@ export async function endPerjantaibiisiVoting(env: Env, statusContent: string, n
     const year = getYear(now);
 
     // Edit start message
-    const startMsgId = await env.KV.get('pb_voting_message_id');
-    if (startMsgId) {
-        await editDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, startMsgId, statusContent);
+    try {
+        const startMsgId = await env.KV.get('pb_voting_message_id');
+        if (startMsgId) {
+            await editDiscordMessage(env, env.PERJANTAIBIISI_CHANNEL_ID, startMsgId, statusContent);
+        }
+    } catch (err) {
+        console.error('Failed to edit voting start message:', err);
     }
 
     // Calculate winner
