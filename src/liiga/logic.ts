@@ -304,6 +304,8 @@ export async function deleteUserBets(env: Env, userId: string, date: string) {
 }
 
 export function formatDiscordEmbed(games: LiigaGame[], bets: UserBet[] = []): any {
+    const isFinalUpdate = games.length > 0 && games.every(g => g.ended);
+
     const fields = games.map(game => {
         const home = game.homeTeam.teamName;
         const away = game.awayTeam.teamName;
@@ -341,6 +343,13 @@ export function formatDiscordEmbed(games: LiigaGame[], bets: UserBet[] = []): an
             }
         }
 
+        if (isFinalUpdate) {
+            const score60 = get60MinScore(game);
+            if (score60.result) {
+                name += ` - ${score60.result}`;
+            }
+        }
+
         return {
             name,
             value,
@@ -371,6 +380,7 @@ export function formatDiscordEmbed(games: LiigaGame[], bets: UserBet[] = []): an
                 } else {
                     let correctCount = 0;
                     let totalCount = 0;
+                    const userPreds: string[] = [];
 
                     for (const game of games) {
                         const userPred = entry.bets[game.id];
@@ -380,12 +390,23 @@ export function formatDiscordEmbed(games: LiigaGame[], bets: UserBet[] = []): an
                                 const score60 = get60MinScore(game);
                                 if (score60.result && userPred === score60.result) {
                                     correctCount++;
+                                    userPreds.push(`**${userPred}**`);
+                                } else {
+                                    userPreds.push(userPred);
                                 }
+                            } else {
+                                userPreds.push(userPred);
                             }
+                        } else {
+                            userPreds.push('-');
                         }
                     }
 
-                    betsaajatLines.push(`${entry.userName}: ${correctCount}/${totalCount}`);
+                    let line = `${entry.userName}: ${correctCount}/${totalCount}`;
+                    if (isFinalUpdate) {
+                        line += ` (${userPreds.join('')})`;
+                    }
+                    betsaajatLines.push(line);
                 }
             }
 
