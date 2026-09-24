@@ -57,8 +57,8 @@ export async function updateLiigaScores(env: Env) {
     // Calculate start times
     const startTimes = gamesData.map(g => new Date(g.start).getTime());
     const earliestStart = Math.min(...startTimes);
-    // Notification starts 1h before first game when betting opens
-    const notificationStartTime = new Date(earliestStart - 60 * 60 * 1000);
+    // Notification starts 2h before first game when betting opens
+    const notificationStartTime = new Date(earliestStart - 2 * 60 * 60 * 1000);
     const bettingEndTime = new Date(earliestStart - 1 * 60 * 1000);
 
     const isBettingOpen = now >= notificationStartTime && now < bettingEndTime;

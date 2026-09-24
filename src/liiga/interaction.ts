@@ -23,7 +23,7 @@ export async function handleLiigaComponent(interaction: any, env: Env): Promise<
             const startTimes = games.map(g => g.start ? new Date(g.start).getTime() : Date.now()).filter(t => !isNaN(t));
             const earliestStart = startTimes.length > 0 ? Math.min(...startTimes) : Date.now();
 
-            const bettingStartTime = earliestStart - 60 * 60 * 1000;
+            const bettingStartTime = earliestStart - 2 * 60 * 60 * 1000;
             const bettingEndTime = earliestStart - 1 * 60 * 1000;
             const nowTs = now.getTime();
 
@@ -31,7 +31,7 @@ export async function handleLiigaComponent(interaction: any, env: Env): Promise<
                 return jsonResponse({
                     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                     data: {
-                        content: 'Vetoja voi asettaa 1h – 1min ennen päivän ensimmäisen ottelun alkua.',
+                        content: 'Vetoja voi asettaa 2h – 1min ennen päivän ensimmäisen ottelun alkua.',
                         flags: 64
                     }
                 });
