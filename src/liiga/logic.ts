@@ -24,6 +24,12 @@ export interface LiigaGame {
     gameTime: number;
     currentPeriod: number;
     finishedType: string;
+    periods?: Array<{
+        index: number;
+        homeTeamGoals: number;
+        awayTeamGoals: number;
+        category?: string;
+    }>;
 }
 
 export interface LiigaGoalEvent {
@@ -152,15 +158,29 @@ export function get60MinScore(game: LiigaGame): { homeGoals: number; awayGoals: 
         return { homeGoals: 0, awayGoals: 0, result: null };
     }
 
-    const homeGoalsEvents = (game.homeTeam.goalEvents || []).filter(e => e.period <= 3 || e.gameTime <= 3600);
-    const awayGoalsEvents = (game.awayTeam.goalEvents || []).filter(e => e.period <= 3 || e.gameTime <= 3600);
+    const isExtendedGame = game.finishedType === 'ENDED_DURING_EXTENDED_GAME_TIME' ||
+        game.finishedType === 'ENDED_DURING_WINNING_SHOT_COMPETITION' ||
+        (game.ended && game.gameTime > 3600);
 
-    const homeGoals = homeGoalsEvents.length;
-    const awayGoals = awayGoalsEvents.length;
+    let homeGoals = 0;
+    let awayGoals = 0;
+
+    if (game.periods && Array.isArray(game.periods) && game.periods.length >= 3) {
+        const normalPeriods = game.periods.filter(p => p.index <= 3 || p.category === 'NORMAL');
+        homeGoals = normalPeriods.reduce((acc, p) => acc + (p.homeTeamGoals || 0), 0);
+        awayGoals = normalPeriods.reduce((acc, p) => acc + (p.awayTeamGoals || 0), 0);
+    } else {
+        const isRealGoal = (e: LiigaGoalEvent) => !e.goalTypes?.includes('VT0');
+        const homeGoalsEvents = (game.homeTeam.goalEvents || []).filter(e => isRealGoal(e) && e.period <= 3 && e.gameTime <= 3600);
+        const awayGoalsEvents = (game.awayTeam.goalEvents || []).filter(e => isRealGoal(e) && e.period <= 3 && e.gameTime <= 3600);
+
+        homeGoals = homeGoalsEvents.length;
+        awayGoals = awayGoalsEvents.length;
+    }
 
     let result: '1' | 'X' | '2' | null = null;
-    if (homeGoals > awayGoals) result = '1';
-    else if (homeGoals === awayGoals) result = 'X';
+    if (isExtendedGame || homeGoals === awayGoals) result = 'X';
+    else if (homeGoals > awayGoals) result = '1';
     else result = '2';
 
     return { homeGoals, awayGoals, result };
@@ -404,7 +424,7 @@ export function formatDiscordEmbed(games: LiigaGame[], bets: UserBet[] = []): an
 
                     let line = `${entry.userName}: ${correctCount}/${totalCount}`;
                     if (isFinalUpdate) {
-                        line += ` (${userPreds.join('')})`;
+                        line += ` (${userPreds.join(' ')})`;
                     }
                     betsaajatLines.push(line);
                 }

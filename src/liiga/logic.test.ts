@@ -74,7 +74,7 @@ describe('Liiga formatDiscordEmbed', () => {
         expect(betsaajatField.value).not.toContain(' -  ');
     });
 
-    it('formats finished games with final result indicators and bolded correct predictions without separators on final update', () => {
+    it('formats finished games with final result indicators and bolded correct predictions on final update', () => {
         const finishedGames: LiigaGame[] = mockGames.map(g => ({ ...g, ended: true }));
         const embed = formatDiscordEmbed(finishedGames, mockBets);
 
@@ -83,7 +83,53 @@ describe('Liiga formatDiscordEmbed', () => {
 
         const betsaajatField = embed.fields.find((f: any) => f.name === 'Betsaajat');
         expect(betsaajatField).toBeDefined();
-        expect(betsaajatField.value).toContain('Matti: 2/2 (**1****X**)');
-        expect(betsaajatField.value).toContain('Pekka: 0/1 (2-)');
+        expect(betsaajatField.value).toContain('Matti: 2/2 (**1** **X**)');
+        expect(betsaajatField.value).toContain('Pekka: 0/1 (2 -)');
+    });
+
+    it('correctly identifies 60min score as X for games decided in overtime or shootouts', () => {
+        const otGame: LiigaGame = {
+            id: 3,
+            start: '2026-09-23T18:30:00Z',
+            homeTeam: { teamName: 'Sport', goals: 0, goalEvents: [] },
+            awayTeam: {
+                teamName: 'K-Espoo',
+                goals: 1,
+                goalEvents: [
+                    {
+                        scorerPlayerId: 0,
+                        scorerPlayer: undefined,
+                        homeTeamScore: 0,
+                        awayTeamScore: 0,
+                        period: 1,
+                        gameTime: 612,
+                        goalTypes: ['VT0']
+                    },
+                    {
+                        scorerPlayerId: 31296980,
+                        scorerPlayer: { firstName: 'Jere', lastName: 'Väisänen' },
+                        homeTeamScore: 0,
+                        awayTeamScore: 1,
+                        period: 4,
+                        gameTime: 3735,
+                        goalTypes: []
+                    }
+                ]
+            },
+            started: true,
+            ended: true,
+            gameTime: 3735,
+            currentPeriod: 4,
+            finishedType: 'ENDED_DURING_EXTENDED_GAME_TIME',
+            periods: [
+                { index: 1, homeTeamGoals: 0, awayTeamGoals: 0, category: 'NORMAL' },
+                { index: 2, homeTeamGoals: 0, awayTeamGoals: 0, category: 'NORMAL' },
+                { index: 3, homeTeamGoals: 0, awayTeamGoals: 0, category: 'NORMAL' },
+                { index: 4, homeTeamGoals: 0, awayTeamGoals: 1, category: 'OVERTIME' }
+            ]
+        };
+
+        const embed = formatDiscordEmbed([otGame], []);
+        expect(embed.fields[0].name).toBe('Sport 0 - 1 K-Espoo (62:15) - X');
     });
 });
